@@ -3,10 +3,13 @@
 # Format: INI file with [Flatpak Preinstall NAME] groups
 # See: https://docs.flatpak.org/en/latest/flatpak-command-reference.html#flatpak-preinstall
 
-# Bootstrap-phase sanity check: proves the flatpak preinstall path works,
-# and is genuinely useful for managing the GNOME extensions/desktop
-# customization tier of this project.
-[Flatpak Preinstall com.mattjakeman.ExtensionManager]
+# Bootstrap-phase sanity check: proves the flatpak preinstall path works.
+# Flatseal (flatpak permission manager) is chosen because the Bluefin base
+# does NOT already ship it (unlike Extension Manager, which it does), so its
+# presence on a booted system is a real end-to-end test of this pipeline --
+# and it's genuinely useful for managing the permissions of the sandboxed
+# security GUI apps we'll add later.
+[Flatpak Preinstall com.github.tchx84.Flatseal]
 Branch=stable
 
 # Uncomment the apps you want installed on first boot:

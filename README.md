@@ -14,7 +14,8 @@ Instead, you create your own OS repository based on this template, allowing full
 
 ## What Makes this Raptor Different?
 
-This image is based on Fedora Silverblue (GNOME), aiming toward Kali Linux-like
+This image is based on Bluefin (`ghcr.io/ublue-os/bluefin`, itself Fedora
+Silverblue + GNOME + Bluefin's desktop config), aiming toward Kali Linux-like
 pentesting functionality, built with no build-time package layering.
 
 ### No Build-Time Layering
@@ -37,8 +38,8 @@ through Homebrew or Flatpak instead:
 
 ### Added Applications (Runtime)
 
-- **CLI Tools (Homebrew)**: `nmap` — first pentest tool, proves the Brewfile → `ujust` path works end to end
-- **GUI Apps (Flatpak)**: Extension Manager (`com.mattjakeman.ExtensionManager`) — for managing GNOME Shell extensions
+- **CLI Tools (Homebrew)**: `nmap` — first pentest tool. Note: this is staged into the image at `/usr/share/ublue-os/homebrew/default.Brewfile` but installed at runtime by the user via `ujust install-default-apps` (consistent with the no-layering policy — brew installs live in the user's writable layer, not the image).
+- **GUI Apps (Flatpak)**: Flatseal (`com.github.tchx84.Flatseal`) — flatpak permission manager, preinstalled on first boot. Chosen as the preinstall sanity-check because the Bluefin base does not already ship it, and it's useful for managing the permissions of sandboxed security apps added later.
 
 ### Removed/Disabled
 
@@ -194,11 +195,16 @@ Renovate will run every 6 hours and on config changes. It pins GitHub Actions to
 Choose your base image in `Containerfile` (the `FROM` line):
 
 ```dockerfile
-FROM quay.io/fedora-ostree-desktops/silverblue:44@sha256:...
+FROM ghcr.io/ublue-os/bluefin:stable
 ```
 
-Finpilot layers on top of Fedora Silverblue, not Bluefin. Bluefin's desktop
-configuration is provided by `@projectbluefin/common` earlier in the build.
+This fork uses the full Bluefin image as its base (for its GNOME desktop
+defaults, fastfetch, fonts, and codecs out of the box). Note that finpilot's
+`ctx` stage still copies `@projectbluefin/common` and `@ublue-os/brew` into
+the image, which full Bluefin already contains — this redundancy is currently
+accepted (we'll override desktop config with Kali-like settings in a later
+phase) and is a cleanup candidate once the `build/*.sh` scripts no longer
+depend on those `/oci/...` paths.
 
 Add your packages — this fork has a strict no-layering policy (see "No
 Build-Time Layering" above), so packages are not added via `dnf5` in

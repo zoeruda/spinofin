@@ -49,16 +49,27 @@ COPY custom /custom
 COPY --from=common /system_files /oci/common
 COPY --from=brew /system_files /oci/brew
 
-# Base Image - GNOME included (Fedora official OSTree desktop)
-# Renovate will keep the digest pin up to date.
-FROM quay.io/fedora-ostree-desktops/silverblue:44@sha256:5b5f80515ba17fb604a40cefcc636bca5b037a3bb21253dd92ae13fc6c8d61ae
+# Base Image - full Bluefin (Fedora Silverblue + GNOME + Bluefin desktop
+# config, fastfetch, fonts, codecs, ujust ecosystem, akmods).
+#
+# NOTE: This is a *final* Bluefin image, not a bare base. finpilot's ctx
+# stage still copies /oci/common and /oci/brew below, which Bluefin already
+# contains -- that redundancy is intentional/accepted for now (we'll be
+# overriding desktop config with Kali-like settings in a later phase, so
+# keeping finpilot's bare-base assembly pristine isn't worth it yet).
+# Cleanup candidate later: drop the redundant common/brew COPYs once the
+# build scripts no longer depend on those /oci paths.
+#
+# Pinned to :stable for now; Renovate will replace this with a
+# :stable@sha256:... digest pin on its first run after push.
+FROM ghcr.io/ublue-os/bluefin:stable
 
 # Image identity - these define how bootc, fastfetch, and the ublue ecosystem
 # recognize your image. Change these to match your project name.
 ARG IMAGE_NAME="spinofin"
 ARG IMAGE_VENDOR="zoeruda"
 ARG UBLUE_IMAGE_TAG="stable"
-ARG BASE_IMAGE_NAME="silverblue"
+ARG BASE_IMAGE_NAME="bluefin"
 ARG FEDORA_MAJOR_VERSION="44"
 ARG VERSION=""
 
