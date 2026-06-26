@@ -64,10 +64,13 @@ setup-metasploit:
     # Runs inside the rootful Kali container. Idempotent: safe to re-run.
     # - postgresql is started via the sysv 'service' wrapper (the container is
     #   not an init/systemd container, so 'systemctl' is not used here).
-    # - msfdb init runs as your mapped user (NOT via sudo); it escalates
-    #   internally for the postgres role/db creation. distrobox provides
-    #   passwordless sudo inside the container.
-    distrobox enter --root {{ kali_box }} -- bash -lc 'sudo service postgresql start; msfdb init'
+    # - msfdb MUST be run as root on current Kali (it guards at the top and
+    #   exits otherwise). It writes a SYSTEM-WIDE config to
+    #   /usr/share/metasploit-framework/config/database.yml, so the exported
+    #   msfconsole -- which runs as your user -- reads the same config and
+    #   connects to the same database. distrobox provides passwordless sudo
+    #   inside the container.
+    distrobox enter --root {{ kali_box }} -- bash -lc 'sudo service postgresql start; sudo msfdb init'
     echo ""
     echo "Done. Launch Metasploit with:  msfconsole"
     echo "(or, explicitly:  distrobox enter --root {{ kali_box }} -- msfconsole)"
