@@ -20,6 +20,13 @@ rm -f "${CLEAN_ROOT}/usr/lib/systemd/system/flatpak-add-fedora-repos.service"
 
 rm -rf "${CLEAN_ROOT}/.gitkeep"
 find "${CLEAN_ROOT}/var"/* -maxdepth 0 -type d \! -name cache -exec rm -fr {} \;
+
+# Ensure these exist before the glob below -- on some builds /var/cache
+# itself is absent at this point (e.g. nothing wrote to it outside the
+# cache-mounted libdnf5/rpm-ostree paths, which are excluded from the
+# final layer by design). Without this, an unmatched glob with no
+# nullglob expands to a literal, unexpanded string and `find` errors.
+mkdir -p "${CLEAN_ROOT}/var/cache/libdnf5" "${CLEAN_ROOT}/var/cache/rpm-ostree"
 find "${CLEAN_ROOT}/var/cache"/* -maxdepth 0 -type d \! -name libdnf5 \! -name rpm-ostree -exec rm -fr {} \;
 
 # Clear tmpfs-backed runtime directories without deleting the directories
