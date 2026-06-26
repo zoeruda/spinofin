@@ -39,6 +39,14 @@ find /ctx/custom/ujust -iname '*.just' -exec printf "\n\n" \; -exec cat {} \; >>
 mkdir -p /usr/share/flatpak/preinstall.d/
 cp /ctx/custom/flatpaks/*.preinstall /usr/share/flatpak/preinstall.d/
 
+# Copy Distrobox manifests (the Kali toolbox container declaration).
+# This is just a file copy -- no packages are installed on the host. The
+# tools declared inside the manifest are installed via apt INSIDE the
+# container at provisioning time, which does not touch the host image and
+# does not violate the no-layering policy.
+mkdir -p /usr/share/spinofin/distrobox/
+cp /ctx/custom/distrobox/*.ini /usr/share/spinofin/distrobox/
+
 echo "::endgroup::"
 
 echo "::group:: Install Packages"
