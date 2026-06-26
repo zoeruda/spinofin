@@ -200,13 +200,9 @@ FROM quay.io/fedora-ostree-desktops/silverblue:44@sha256:...
 Finpilot layers on top of Fedora Silverblue, not Bluefin. Bluefin's desktop
 configuration is provided by `@projectbluefin/common` earlier in the build.
 
-Add your packages in `build/10-build.sh`:
-
-```bash
-dnf5 install -y package-name
-```
-
-Customize your apps:
+Add your packages — this fork has a strict no-layering policy (see "No
+Build-Time Layering" above), so packages are not added via `dnf5` in
+`build/10-build.sh`. Instead:
 
 - Add Brewfiles in `custom/brew/` ([guide](custom/brew/README.md))
 - Add Flatpaks in `custom/flatpaks/` ([guide](custom/flatpaks/README.md))
