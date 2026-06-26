@@ -1,7 +1,7 @@
 ###############################################################################
 # PROJECT NAME CONFIGURATION
 ###############################################################################
-# Name: finpilot
+# Name: spinofin
 #
 # IMPORTANT: Change "finpilot" above to your desired project name.
 # This name should be used consistently throughout the repository in:
@@ -55,8 +55,8 @@ FROM quay.io/fedora-ostree-desktops/silverblue:44@sha256:5b5f80515ba17fb604a40ce
 
 # Image identity - these define how bootc, fastfetch, and the ublue ecosystem
 # recognize your image. Change these to match your project name.
-ARG IMAGE_NAME="finpilot"
-ARG IMAGE_VENDOR="projectbluefin"
+ARG IMAGE_NAME="spinofin"
+ARG IMAGE_VENDOR="zoeruda"
 ARG UBLUE_IMAGE_TAG="stable"
 ARG BASE_IMAGE_NAME="silverblue"
 ARG FEDORA_MAJOR_VERSION="44"
@@ -77,6 +77,10 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     /ctx/build/00-image-info.sh
 
 # Set dnf options before build scripts (persists across subsequent RUN layers)
+# NOTE: no-layering policy in effect -- this repo does not call `dnf5 install`
+# in build/*.sh. This line only sets cache options and is otherwise inert.
+# See README.md for the full rationale and the Track A -> Track B
+# (GNOME OS bootc, no package manager) migration plan this enables.
 RUN dnf5 config-manager setopt keepcache=1 install_weak_deps=0
 
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \

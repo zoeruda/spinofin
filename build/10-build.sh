@@ -43,12 +43,23 @@ echo "::endgroup::"
 
 echo "::group:: Install Packages"
 
-# Install a minimal package to verify the cache is working
-# This ensures the DNF cache is populated for future builds
-dnf5 install -y tmux
-
-# Example using COPR with isolated pattern:
-# copr_install_isolated "ublue-os/staging" package-name
+# -----------------------------------------------------------------------
+# NO-LAYERING POLICY -- see README.md
+#
+# This fork intentionally does not add packages via dnf5/rpm-ostree/COPR.
+# The goal is a base image that can later be swapped for a true GNOME OS
+# bootc image (which has no system package manager at all) without having
+# to unwind a pile of build-time package layering first.
+#
+# New tools go in one of these places instead:
+#   - custom/brew/*.Brewfile       CLI tools, installed at runtime via
+#                                   `ujust install-default-apps` etc.
+#   - custom/flatpaks/*.preinstall GUI apps, installed on first boot
+#
+# The `dnf5 config-manager setopt ...` line in the Containerfile is left
+# in place because it only sets cache options -- it does not install
+# anything, so it doesn't violate this policy.
+# -----------------------------------------------------------------------
 
 echo "::endgroup::"
 
