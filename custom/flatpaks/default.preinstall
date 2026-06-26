@@ -3,6 +3,12 @@
 # Format: INI file with [Flatpak Preinstall NAME] groups
 # See: https://docs.flatpak.org/en/latest/flatpak-command-reference.html#flatpak-preinstall
 
+# Bootstrap-phase sanity check: proves the flatpak preinstall path works,
+# and is genuinely useful for managing the GNOME extensions/desktop
+# customization tier of this project.
+[Flatpak Preinstall com.mattjakeman.ExtensionManager]
+Branch=stable
+
 # Uncomment the apps you want installed on first boot:
 
 ;[Flatpak Preinstall org.mozilla.firefox]

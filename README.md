@@ -1,6 +1,8 @@
-# finpilot
+# spinofin
 
 A template for building custom bootc operating system images based on the lessons from [Universal Blue](https://universal-blue.org/) and [Bluefin](https://projectbluefin.io). It is designed to be used manually, but is optimized to be bootstraped by GitHub Copilot. After set up you'll have your own custom Linux.
+
+**What this fork is for:** a declarable, verifiable pentesting OS with Kali Linux-like tooling on a GNOME desktop, built using lessons from Bluefin and [Dakota](https://github.com/projectbluefin/dakota) (Bluefin's GNOME OS bootc prototype). It uses no build-time package layering — see "No Build-Time Layering" below — so the base image can move from Fedora Atomic to a true GNOME OS bootc image later without first unwinding a pile of system packages.
 
 This template uses the **multi-stage build architecture** from @projectbluefin/distroless, combining resources from multiple OCI containers for modularity and maintainability. See the [Architecture](#architecture) section below for details.
 
@@ -12,28 +14,41 @@ Instead, you create your own OS repository based on this template, allowing full
 
 ## What Makes this Raptor Different?
 
-Here are the changes from [Base Image Name]. This image is based on [Bluefin/Bazzite/Aurora/etc] and includes these customizations:
+This image is based on Fedora Silverblue (GNOME), aiming toward Kali Linux-like
+pentesting functionality, built with no build-time package layering.
 
-### Added Packages (Build-time)
+### No Build-Time Layering
 
-- **System packages**: tmux, micro, mosh - [brief explanation of why]
+This fork does not add packages via `dnf5`/`rpm-ostree`/COPR in its own
+customizations (`build/*.sh`, `Containerfile`) — only `systemctl enable`/`mask`
+service toggles on binaries the base image already ships. Everything else goes
+through Homebrew or Flatpak instead:
+
+- **Why**: the long-term target base is a true GNOME OS bootc image
+  (`quay.io/gnome_infrastructure/gnome-build-meta`), which has no system
+  package manager at all. Avoiding layering from the start means there's
+  nothing to unwind later.
+- **Enforced by**: `.github/workflows/no-layering-check.yml` fails any PR
+  that introduces a `dnf5`/`yum`/`apt`/`rpm-ostree install` call in
+  `build/*.sh` or `Containerfile`.
+- **Where tools actually go**: CLI tools → `custom/brew/*.Brewfile`
+  (installed at runtime via `ujust install-default-apps`); GUI apps →
+  `custom/flatpaks/*.preinstall` (installed on first boot).
 
 ### Added Applications (Runtime)
 
-- **CLI Tools (Homebrew)**: neovim, helix - [brief explanation]
-- **GUI Apps (Flatpak)**: Spotify, Thunderbird - [brief explanation]
+- **CLI Tools (Homebrew)**: `nmap` — first pentest tool, proves the Brewfile → `ujust` path works end to end
+- **GUI Apps (Flatpak)**: Extension Manager (`com.mattjakeman.ExtensionManager`) — for managing GNOME Shell extensions
 
 ### Removed/Disabled
 
-- List anything removed from base image
+- Nothing removed from the base image yet
 
 ### Configuration Changes
 
-- Any systemd services enabled/disabled
-- Desktop environment changes
-- Other notable modifications
+- None yet beyond the no-layering policy above
 
-_Last updated: [date]_
+_Last updated: 2026-06-24_
 
 > Replace the placeholders above with your actual customizations whenever you add or remove packages, apps, or configuration. This section is what tells users how your image differs from the base.
 
@@ -158,7 +173,7 @@ Renovate automatically updates dependencies and GitHub Actions (including workfl
 
 1. Go to GitHub → Settings → Developer settings → **Personal access tokens** → **Tokens (classic)**
 2. Click **Generate new token (classic)**
-3. Set a note like `renovate-finpilot`
+3. Set a note like `renovate-spinofin`
 4. Select scopes: **`repo`** (full control) and **`workflow`** (update workflows)
 5. Click **Generate token** and copy the value
 6. Go to your repository → Settings → Secrets and variables → Actions
@@ -185,13 +200,9 @@ FROM quay.io/fedora-ostree-desktops/silverblue:44@sha256:...
 Finpilot layers on top of Fedora Silverblue, not Bluefin. Bluefin's desktop
 configuration is provided by `@projectbluefin/common` earlier in the build.
 
-Add your packages in `build/10-build.sh`:
-
-```bash
-dnf5 install -y package-name
-```
-
-Customize your apps:
+Add your packages — this fork has a strict no-layering policy (see "No
+Build-Time Layering" above), so packages are not added via `dnf5` in
+`build/10-build.sh`. Instead:
 
 - Add Brewfiles in `custom/brew/` ([guide](custom/brew/README.md))
 - Add Flatpaks in `custom/flatpaks/` ([guide](custom/flatpaks/README.md))
@@ -214,7 +225,7 @@ All changes should be made via pull requests:
 Switch to your image:
 
 ```bash
-sudo bootc switch ghcr.io/your-username/your-repo-name:stable
+sudo bootc switch ghcr.io/zoeruda/spinofin:stable
 sudo systemctl reboot
 ```
 
@@ -244,9 +255,9 @@ Users can verify your images with:
 
 ```bash
 cosign verify \
-  --certificate-identity-regexp="https://github.com/your-username/your-repo-name/.github/workflows/" \
+  --certificate-identity-regexp="https://github.com/zoeruda/spinofin/.github/workflows/" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  ghcr.io/your-username/your-repo-name:stable
+  ghcr.io/zoeruda/spinofin:stable
 ```
 
 ## Love Your Image? Let's Go to Production
@@ -312,9 +323,9 @@ Users can verify your images with:
 
 ```bash
 cosign verify \
-  --certificate-identity-regexp="https://github.com/your-username/your-repo-name/.github/workflows/" \
+  --certificate-identity-regexp="https://github.com/zoeruda/spinofin/.github/workflows/" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  ghcr.io/your-username/your-repo-name:stable
+  ghcr.io/zoeruda/spinofin:stable
 ```
 
 ## Detailed Guides

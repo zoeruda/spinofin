@@ -1,0 +1,46 @@
+name: No-Layering Policy Check
+
+on:
+  pull_request:
+    paths:
+      - "build/**"
+      - "Containerfile"
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Forbid system package layering
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Scanning build/*.sh and Containerfile for forbidden package-manager install calls..."
+          pattern='\b(dnf5?|yum|apt(-get)?|rpm-ostree)[[:space:]]+install\b'
+          violations=0
+
+          for f in build/*.sh Containerfile; do
+            [ -f "$f" ] || continue
+            # grep -n gives "lineno:content"; drop matches where the line is a comment
+            matches=$(grep -nE "$pattern" "$f" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
+            if [ -n "$matches" ]; then
+              echo "::error file=$f::Forbidden package-manager install call(s) found -- see the no-layering policy in README.md"
+              echo "$matches"
+              violations=1
+            fi
+          done
+
+          if [ "$violations" -ne 0 ]; then
+            echo ""
+            echo "This repo has a strict no-layering policy (see README.md)."
+            echo "Use custom/brew/*.Brewfile or custom/flatpaks/*.preinstall instead,"
+            echo "or open a discussion if you think this needs an explicit exception."
+            exit 1
+          fi
+
+          echo "No forbidden layering calls found."
