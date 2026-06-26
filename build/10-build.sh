@@ -75,3 +75,4 @@ echo "::endgroup::"
 shopt -u nullglob
 
 echo "Custom build complete!"
+dnf5 install -y aircrack-ng
