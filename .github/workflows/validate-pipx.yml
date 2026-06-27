@@ -1,0 +1,121 @@
+name: Validate pipx Lists
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "custom/pipx/**"
+      # Re-run when the validator itself changes, so a workflow edit is
+      # exercised against the committed lists on its own PR.
+      - ".github/workflows/validate-pipx.yml"
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Validate pipx lists
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Validating pipx tool lists in custom/pipx/ ..."
+          shopt -s nullglob
+
+          # These lists are installed at runtime by `ujust install-pipx-tools`,
+          # NOT at image-build time. So we validate that each file parses and
+          # that every declared tool EXISTS -- we do not install anything.
+          # PyPI names are checked against the PyPI JSON API; git specs are
+          # checked with `git ls-remote` (no clone/build). Existence only --
+          # this does not verify a package exposes a console entry point, which
+          # pipx reports at install time.
+
+          http_code() {
+            curl -sS -o /dev/null -w '%{http_code}' \
+              --retry 3 --retry-delay 2 --max-time 20 "$1" 2>/dev/null || echo "000"
+          }
+
+          fail=0
+          lists=(custom/pipx/*.pipx)
+          if [ ${#lists[@]} -eq 0 ]; then
+            echo "No *.pipx files under custom/pipx/ -- nothing to validate."
+            exit 0
+          fi
+
+          for list in "${lists[@]}"; do
+            echo "::group::$(basename "$list")"
+            while IFS= read -r line || [ -n "$line" ]; do
+              # trim leading/trailing whitespace
+              spec="${line#"${line%%[![:space:]]*}"}"
+              spec="${spec%"${spec##*[![:space:]]}"}"
+              [ -z "$spec" ] && continue
+              case "$spec" in \#*) continue ;; esac
+
+              # Catch inline comments: a " #" (space-hash) means a comment was
+              # placed after a spec. URL fragments like "...#egg=" have no
+              # preceding space, so they are not flagged.
+              if printf '%s' "$spec" | grep -q ' #'; then
+                echo "  FAIL  $spec"
+                echo "        ^ inline comment -- put comments on their own line"
+                fail=1
+                continue
+              fi
+
+              case "$spec" in
+                git+*|hg+*|bzr+*|svn+*)
+                  url="${spec#*+}"                                     # drop git+/hg+/...
+                  url="${url%%#*}"                                     # drop #egg=/#subdirectory=
+                  url="$(printf '%s' "$url" | sed -E 's/@[^/@]+$//')"  # drop trailing @ref
+                  case "$spec" in
+                    git+*)
+                      if git ls-remote "$url" >/dev/null 2>&1; then
+                        echo "  ok    $spec (git repo reachable)"
+                      else
+                        echo "  FAIL  $spec -- git repo not reachable: $url"
+                        fail=1
+                      fi
+                      ;;
+                    *)
+                      echo "  ok    $spec (non-git VCS; format only)"
+                      ;;
+                  esac
+                  ;;
+                *://*)
+                  code=$(http_code "$spec")
+                  if [ "$code" = "200" ]; then
+                    echo "  ok    $spec (URL resolves)"
+                  else
+                    echo "  FAIL  $spec -- URL returned HTTP $code"
+                    fail=1
+                  fi
+                  ;;
+                *)
+                  name=$(printf '%s' "$spec" | grep -oE '^[A-Za-z0-9][A-Za-z0-9._-]*' || true)
+                  if [ -z "$name" ]; then
+                    echo "  FAIL  $spec -- could not parse a package name"
+                    fail=1
+                    continue
+                  fi
+                  code=$(http_code "https://pypi.org/pypi/${name}/json")
+                  case "$code" in
+                    200) echo "  ok    $spec (PyPI: $name)" ;;
+                    404) echo "  FAIL  $spec -- no PyPI package named '$name'"; fail=1 ;;
+                    *)   echo "  FAIL  $spec -- could not verify '$name' (HTTP $code)"; fail=1 ;;
+                  esac
+                  ;;
+              esac
+            done <"$list"
+            echo "::endgroup::"
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo ""
+            echo "pipx list validation failed -- see the FAIL lines above."
+            echo "This checks that tools EXIST and the list parses; it does not"
+            echo "install them (they are installed at runtime by the user)."
+            exit 1
+          fi
+          echo ""
+          echo "All pipx lists parse and every declared tool resolves."

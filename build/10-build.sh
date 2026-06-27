@@ -47,6 +47,15 @@ cp /ctx/custom/flatpaks/*.preinstall /usr/share/flatpak/preinstall.d/
 mkdir -p /usr/share/spinofin/distrobox/
 cp /ctx/custom/distrobox/*.ini /usr/share/spinofin/distrobox/
 
+# Copy the pipx tool list (the host-side Python tooling declaration).
+# Like the brew/flatpak/distrobox copies above, this is just a file copy --
+# no packages are installed on the host here. The tools it declares are
+# installed at runtime by `ujust install-pipx-tools` into the user's
+# ~/.local (isolated pipx venvs), which does not touch the image and does
+# not violate the no-layering policy.
+mkdir -p /usr/share/spinofin/pipx/
+cp /ctx/custom/pipx/*.pipx /usr/share/spinofin/pipx/
+
 echo "::endgroup::"
 
 echo "::group:: Install Packages"

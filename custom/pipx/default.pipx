@@ -1,0 +1,35 @@
+# default.pipx -- declarative list of Python applications installed via pipx.
+#
+# This is the HOST-SIDE bucket for Python-only pentest tools (Phase 3). pipx
+# installs each app into its own isolated venv under ~/.local with a shim on
+# ~/.local/bin (already on PATH in Bluefin), so installs live in the user's
+# writable layer -- NOT baked into the image, NOT run at boot. Same no-layering
+# posture as brew, and Track-B-friendly (pipx + python3 exist on the GNOME OS
+# bootc base too).
+#
+# WHEN A TOOL BELONGS HERE (vs. the Kali container):
+#   * It is a Python CLI app with no clean homebrew-core formula, AND
+#   * it installs WITHOUT system build dependencies -- i.e. it ships a pure
+#     `py3-none-any` wheel or otherwise needs no apt/dnf -devel headers.
+# A Python tool that needs build headers (e.g. anything pulling `gssapi`, which
+# needs libkrb5-dev/krb5-devel) can NOT be installed host-side under the
+# no-layering policy -- it goes in the Kali container (apt-installable there).
+#
+# FORMAT: one `pipx install` spec per line -- a PyPI name, `name==version`, or
+# a `git+https://...` URL. Comments must be on their OWN line (a leading `#`);
+# do not put `#` comments after a spec, because git URLs may contain a
+# `#egg=`/`#subdirectory=` fragment. Installed by: ujust install-pipx-tools
+
+# AD privesc swiss-army-knife (CravateRouge/bloodyAD). Pure-Python wheel
+# (py3-none-any), no system build deps -> clean host install.
+bloodyAD
+
+# --- Deliberately NOT host-side (documented per-tool decisions) -------------
+# powerview.py: needs the gssapi build dep, which requires libkrb5-dev headers
+#   at install time. The no-layering host policy forbids adding those, so this
+#   is routed to the Kali container instead (apt install libkrb5-dev + pipx).
+#   Tracked for the container unit; do NOT uncomment here.
+#   pipx install "git+https://github.com/aniqfakhrul/powerview.py"
+#
+# wfuzz: only a stale Python-2 third-party brew tap exists and upstream is
+#   effectively abandoned on modern Python; container (apt) is the saner home.

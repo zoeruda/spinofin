@@ -46,3 +46,9 @@ brew "nuclei"        # template-based vulnerability scanner (ProjectDiscovery)
 brew "ffuf"          # fast web fuzzer (Go)
 brew "feroxbuster"   # recursive content discovery (Rust)
 brew "gobuster"      # directory / DNS / vhost brute-forcing (Go)
+
+# --- Python tooling bootstrap (Phase 3) ------------------------------------
+# pipx is the installer for the host-side Python bucket (custom/pipx/*.pipx,
+# installed via `ujust install-pipx-tools`). Installing it here means
+# `ujust install-default-apps` makes pipx available before that recipe runs.
+brew "pipx"          # isolated-venv installer for Python CLI apps

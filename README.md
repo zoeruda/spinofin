@@ -45,7 +45,10 @@ through Homebrew or Flatpak instead:
   - `nuclei` — template-based vulnerability scanner.
   - `ffuf`, `feroxbuster`, `gobuster` — web fuzzing / content & DNS discovery.
 
-  Which tools go host-side (here) vs. into the Kali container is governed by the **host-vs-container rubric** documented at the top of [`custom/brew/default.Brewfile`](custom/brew/default.Brewfile). Raw-socket / privileged / Kali-only / heavy-dependency tools (e.g. `masscan`, `naabu`) stay in the container; Python-only tools without a clean formula are slated for `pipx` (next Phase 3 unit).
+  Which tools go host-side (here) vs. into the Kali container is governed by the **host-vs-container rubric** documented at the top of [`custom/brew/default.Brewfile`](custom/brew/default.Brewfile). Raw-socket / privileged / Kali-only / heavy-dependency tools (e.g. `masscan`, `naabu`) stay in the container; Python-only tools without a clean formula go in the `pipx` bucket below. `pipx` itself is installed via this Brewfile to bootstrap that bucket.
+- **CLI Tools (pipx)**: Python-only tools with no clean Homebrew formula, declared in [`custom/pipx/default.pipx`](custom/pipx/default.pipx) and installed at runtime via `ujust install-pipx-tools` into the user's isolated pipx venvs (same no-layering posture as brew):
+  - `bloodyAD` — Active Directory privesc framework (pure-Python wheel, no system build deps).
+  - Routed to the Kali container instead (documented in the list file): `powerview.py` (needs `libkrb5-dev` build headers, which the no-layering host policy forbids) and `wfuzz` (only a stale Python-2 brew tap exists).
 - **GUI Apps (Flatpak)**: Flatseal (`com.github.tchx84.Flatseal`) — flatpak permission manager, preinstalled on first boot. Chosen as the preinstall sanity-check because the Bluefin base does not already ship it, and it's useful for managing the permissions of sandboxed security apps added later.
 
 ### Removed/Disabled
@@ -115,7 +118,7 @@ Read `.agents/skills/finpilot-maintain.md` and `.agents/skills/finpilot-ci.md`, 
   - PRs build and validate before merge
   - `main` branch builds `:stable` images
 - Validates your files on pull requests so you never break a build:
-  - Brewfile, Justfile, ShellCheck, Renovate config, and it'll even check to make sure the flatpak you add exists on FlatHub
+  - Brewfile, Justfile, ShellCheck, Renovate config, pipx tool lists (checks each tool exists on PyPI / as a reachable git repo), and it'll even check to make sure the flatpak you add exists on FlatHub
 - Production Grade Features
   - Container signing with keyless OIDC
   - See checklist below to enable these as they take some manual configuration
@@ -228,7 +231,7 @@ All changes should be made via pull requests:
 1. Open a pull request on GitHub with the change you want.
 2. The PR will automatically trigger:
    - Build validation
-   - Brewfile, Flatpak, Justfile, and shellcheck validation
+   - Brewfile, Flatpak, Justfile, pipx, and shellcheck validation
    - Test image build
 3. Once checks pass, merge the PR
 4. Merging triggers publishes a `:stable` image
