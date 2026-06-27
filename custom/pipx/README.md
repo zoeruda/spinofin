@@ -54,4 +54,3 @@ are checked against the PyPI JSON API, `git+` specs with `git ls-remote` — and
 flags inline comments placed after a spec. It does **not** install anything (the
 same posture as the Brewfile validator), so it can't catch a package that exists
 but exposes no console entry point; pipx reports that at install time.
-
