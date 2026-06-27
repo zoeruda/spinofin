@@ -118,7 +118,7 @@ Read `.agents/skills/finpilot-maintain.md` and `.agents/skills/finpilot-ci.md`, 
   - PRs build and validate before merge
   - `main` branch builds `:stable` images
 - Validates your files on pull requests so you never break a build:
-  - Brewfile, Justfile, ShellCheck, Renovate config, and it'll even check to make sure the flatpak you add exists on FlatHub
+  - Brewfile, Justfile, ShellCheck, Renovate config, pipx tool lists (checks each tool exists on PyPI / as a reachable git repo), and it'll even check to make sure the flatpak you add exists on FlatHub
 - Production Grade Features
   - Container signing with keyless OIDC
   - See checklist below to enable these as they take some manual configuration
@@ -231,7 +231,7 @@ All changes should be made via pull requests:
 1. Open a pull request on GitHub with the change you want.
 2. The PR will automatically trigger:
    - Build validation
-   - Brewfile, Flatpak, Justfile, and shellcheck validation
+   - Brewfile, Flatpak, Justfile, pipx, and shellcheck validation
    - Test image build
 3. Once checks pass, merge the PR
 4. Merging triggers publishes a `:stable` image

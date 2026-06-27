@@ -45,3 +45,13 @@ inline `#` comments after a spec, because git URLs can contain a
 - `ujust list-pipx-tools` — show what pipx currently manages.
 
 See [`custom/ujust/pipx-tools.just`](../ujust/pipx-tools.just).
+
+## Validation
+
+`.github/workflows/validate-pipx.yml` runs on PRs that touch this directory. It
+parses each `*.pipx` file and confirms every declared tool resolves — PyPI names
+are checked against the PyPI JSON API, `git+` specs with `git ls-remote` — and
+flags inline comments placed after a spec. It does **not** install anything (the
+same posture as the Brewfile validator), so it can't catch a package that exists
+but exposes no console entry point; pipx reports that at install time.
+
