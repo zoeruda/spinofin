@@ -9,6 +9,9 @@ repos:
       - id: check-yaml
       - id: end-of-file-fixer
       - id: trailing-whitespace
+        # The fastfetch ASCII logo is padded with significant trailing spaces to
+        # keep its block rectangular; stripping them mangles the designed art.
+        exclude: '^custom/branding/system_files/usr/share/spinofin/fastfetch/'
 
   - repo: local
     hooks:
