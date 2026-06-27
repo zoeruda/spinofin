@@ -1,0 +1,5 @@
+# spinofin: point the panel Custom Command List menu at our own logo icon.
+# Overrides only menuicon-setting from 04-bluefin-custom-command-menu; the
+# higher numeric prefix (99 > 04) makes this win on the shared 'distro' db.
+[org/gnome/shell/extensions/custom-command-list]
+menuicon-setting='spinofin-logo-symbolic'

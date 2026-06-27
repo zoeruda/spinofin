@@ -20,6 +20,9 @@ set -euo pipefail
 
 # Branding — customize these for your image
 IMAGE_PRETTY_NAME="${IMAGE_PRETTY_NAME:-My Custom OS}"
+# os-release LOGO: themed icon name shown in GNOME Settings > About. Must match
+# an icon installed in the theme (custom/branding ships apps/${IMAGE_LOGO}.svg).
+IMAGE_LOGO="${IMAGE_LOGO:-spinofin-logo}"
 IMAGE_LIKE="${IMAGE_LIKE:-fedora}"
 HOME_URL="${HOME_URL:-https://github.com/${IMAGE_VENDOR}/${IMAGE_NAME}}"
 DOCUMENTATION_URL="${DOCUMENTATION_URL:-https://github.com/${IMAGE_VENDOR}/${IMAGE_NAME}/blob/main/README.md}"
@@ -83,6 +86,7 @@ NAME="${IMAGE_NAME}"
 IMAGE_ID="${IMAGE_NAME}"
 IMAGE_VERSION="${OS_VERSION}"
 ID_LIKE="${IMAGE_LIKE}"
+LOGO="${IMAGE_LOGO}"
 HOME_URL="${HOME_URL}"
 DOCUMENTATION_URL="${DOCUMENTATION_URL}"
 SUPPORT_URL="${SUPPORT_URL}"

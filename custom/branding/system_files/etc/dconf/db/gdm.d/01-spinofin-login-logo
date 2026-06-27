@@ -1,0 +1,3 @@
+# spinofin: show our logo on the GDM greeter (bottom of the login screen).
+[org/gnome/login-screen]
+logo='/usr/share/pixmaps/spinofin-gdm-logo.png'

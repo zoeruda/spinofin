@@ -68,6 +68,13 @@ FROM ghcr.io/ublue-os/bluefin:stable
 # recognize your image. Change these to match your project name.
 ARG IMAGE_NAME="spinofin"
 ARG IMAGE_VENDOR="zoeruda"
+# Human-readable name shown in os-release PRETTY_NAME (GNOME About, the Anaconda
+# installer title, and the bootloader entry). 00-image-info.sh reads this from
+# the build env; without it PRETTY_NAME falls back to the template's "My Custom OS".
+ARG IMAGE_PRETTY_NAME="spinofin"
+# os-release LOGO icon name -> GNOME Settings > About logo. The icon by this
+# name is shipped by 15-branding.sh (custom/branding apps/spinofin-logo.svg).
+ARG IMAGE_LOGO="spinofin-logo"
 ARG UBLUE_IMAGE_TAG="stable"
 ARG BASE_IMAGE_NAME="bluefin"
 ARG FEDORA_MAJOR_VERSION="44"
@@ -101,6 +108,14 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/boot \
     --mount=type=tmpfs,dst=/tmp \
     /ctx/build/10-build.sh
+
+# Branding: boot splash, GDM login logo, panel logo icon, fastfetch logo.
+# File overwrites + dconf defaults only -- no package layering. See
+# custom/branding/README.md for the per-surface spec.
+RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
+    --mount=type=tmpfs,dst=/boot \
+    --mount=type=tmpfs,dst=/tmp \
+    /ctx/build/15-branding.sh
 
 ### CLEANUP
 ## Use Bluefin's clean-stage.sh to remove build artifacts before linting.
