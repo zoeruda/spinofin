@@ -6,6 +6,9 @@ on:
   pull_request:
     paths:
       - "custom/brew/**"
+      # Re-run when the validator itself changes, so a workflow edit is
+      # exercised against the committed Brewfiles on its own PR.
+      - ".github/workflows/validate-brewfiles.yml"
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -19,16 +22,61 @@ jobs:
       - name: Validate Brewfiles
         shell: bash
         run: |
-          echo "Validating Brewfiles in custom/brew/ directory..."
+          set -euo pipefail
+          echo "Validating Brewfiles in custom/brew/ ..."
+          shopt -s nullglob
 
-          find "custom/brew" -iname '*\.Brewfile*' -print0 | \
-            while IFS= read -r -d '' brewfile ; do
-              echo "::group:: ===$(basename "$brewfile")==="
-              if brew bundle check --file="$brewfile" 2>&1; then
-                echo "✓ $brewfile is valid"
-              else
-                echo "✗ $brewfile validation failed"
-                exit 1
-              fi
+          # These are runtime/user-installed Brewfiles (ujust install-default-apps),
+          # NOT installed at image-build time. So we validate that each file PARSES
+          # and that every declared formula EXISTS -- we do not (and must not) require
+          # the formulae to be installed on this runner.
+          #
+          # NB: the previous version used `brew bundle check`, which only passes when
+          # every formula is already installed, so it failed on any non-empty Brewfile.
+
+          fail=0
+          brewfiles=(custom/brew/*.Brewfile)
+          if [ ${#brewfiles[@]} -eq 0 ]; then
+            echo "No *.Brewfile found under custom/brew/ -- nothing to validate."
+            exit 0
+          fi
+
+          for brewfile in "${brewfiles[@]}"; do
+            echo "::group::$(basename "$brewfile")"
+
+            # `brew bundle list` evaluates the Brewfile and prints its entries
+            # without installing anything; a syntax error fails here. (Default
+            # output is formulae only -- casks are macOS-only and can't install
+            # on this Linux runner, so they are not existence-checked here.)
+            if ! formulae=$(brew bundle list --formula --file="$brewfile"); then
+              echo "FAIL  $brewfile: could not be parsed by 'brew bundle list'"
+              fail=1
               echo "::endgroup::"
-            done
+              continue
+            fi
+
+            # `brew info` reads formula metadata only -- it does not install.
+            # A non-existent / misspelled formula exits non-zero here, which is
+            # exactly the failure we want to catch before merge.
+            while IFS= read -r f; do
+              [ -n "$f" ] || continue
+              if brew info --formula "$f" >/dev/null 2>&1; then
+                echo "  ok    $f"
+              else
+                echo "  FAIL  $f -- no such formula in any tapped repository"
+                fail=1
+              fi
+            done <<< "$formulae"
+
+            echo "::endgroup::"
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo ""
+            echo "Brewfile validation failed -- see the FAIL lines above."
+            echo "This checks that formulae EXIST and the Brewfile parses; it does"
+            echo "not install them (they are installed at runtime by the user)."
+            exit 1
+          fi
+          echo ""
+          echo "All Brewfiles parse and every declared formula resolves."
