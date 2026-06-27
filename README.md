@@ -38,7 +38,14 @@ through Homebrew or Flatpak instead:
 
 ### Added Applications (Runtime)
 
-- **CLI Tools (Homebrew)**: `nmap` — first pentest tool. Note: this is staged into the image at `/usr/share/ublue-os/homebrew/default.Brewfile` but installed at runtime by the user via `ujust install-default-apps` (consistent with the no-layering policy — brew installs live in the user's writable layer, not the image).
+- **CLI Tools (Homebrew)**: host-side recon/web tooling, all staged into the image at `/usr/share/ublue-os/homebrew/default.Brewfile` and installed at runtime via `ujust install-default-apps` (consistent with the no-layering policy — brew installs live in the user's writable layer, not the image):
+  - `nmap` — first pentest tool (Phase 1 sanity check). Unprivileged connect scans only on the host; raw-socket SYN scans are the rootful Kali container's job.
+  - `subfinder`, `amass` — subdomain discovery / attack-surface mapping.
+  - `httpx` — ProjectDiscovery's HTTP probe toolkit (not the Python `httpx` library; see the collision note in the Brewfile).
+  - `nuclei` — template-based vulnerability scanner.
+  - `ffuf`, `feroxbuster`, `gobuster` — web fuzzing / content & DNS discovery.
+
+  Which tools go host-side (here) vs. into the Kali container is governed by the **host-vs-container rubric** documented at the top of [`custom/brew/default.Brewfile`](custom/brew/default.Brewfile). Raw-socket / privileged / Kali-only / heavy-dependency tools (e.g. `masscan`, `naabu`) stay in the container; Python-only tools without a clean formula are slated for `pipx` (next Phase 3 unit).
 - **GUI Apps (Flatpak)**: Flatseal (`com.github.tchx84.Flatseal`) — flatpak permission manager, preinstalled on first boot. Chosen as the preinstall sanity-check because the Bluefin base does not already ship it, and it's useful for managing the permissions of sandboxed security apps added later.
 
 ### Removed/Disabled
@@ -49,7 +56,7 @@ through Homebrew or Flatpak instead:
 
 - None yet beyond the no-layering policy above
 
-_Last updated: 2026-06-24_
+_Last updated: 2026-06-26_
 
 > Replace the placeholders above with your actual customizations whenever you add or remove packages, apps, or configuration. This section is what tells users how your image differs from the base.
 
