@@ -113,7 +113,8 @@ through Homebrew or Flatpak instead:
 
 ### Configuration Changes
 
-- None yet beyond the no-layering policy above
+- No-layering policy as mentioned above
+- Custom Branding: Spinosaurus sail logo and spinofin wordmark to replace Bluefin's branding
 
 _Last updated: 2026-06-28_
 
