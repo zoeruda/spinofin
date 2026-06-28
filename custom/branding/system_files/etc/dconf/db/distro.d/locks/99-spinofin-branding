@@ -1,0 +1,4 @@
+# Force the spinofin panel logo over any existing per-user value.
+/org/gnome/shell/extensions/custom-command-list/menuicon-setting
+/org/gnome/shell/extensions/Logo-menu/use-custom-icon
+/org/gnome/shell/extensions/Logo-menu/custom-icon-path
