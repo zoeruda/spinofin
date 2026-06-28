@@ -24,6 +24,26 @@
 # (py3-none-any), no system build deps -> clean host install.
 bloodyAD
 
+# BloodHound ingestor that collects over ADWS/SOAP (the Python soaphound, NOT
+# the .NET FalconForce tool of the same name). Ships a py3-none-any wheel with
+# a `soaphound` console entry point. Its one real dependency is impacket, which
+# is pure-Python and whose only compiled transitive deps (cryptography via
+# pyOpenSSL, pycryptodomex) install from prebuilt manylinux wheels -- so NO
+# system build headers are needed. Crucially impacket does NOT pull gssapi, so
+# the libkrb5-dev problem that routed powerview.py to the container (below)
+# does not apply here. Verified against the sdist/PyPI 2026-06.
+soaphound
+
+# Web Application Firewall fingerprinting toolkit. Pure-Python (py3-none-any),
+# deps are requests/requests[socks] only -> clean host install. Not in
+# homebrew-core, hence pipx rather than brew.
+wafw00f
+
+# HTTP parameter discovery suite. Pure-Python; deps requests/dicttoxml/ratelimit,
+# no build headers. Has a brew formula but with NO Linux bottle, so per the
+# host-side rubric it lands here (pipx) instead of brew.
+arjun
+
 # --- Deliberately NOT host-side (documented per-tool decisions) -------------
 # powerview.py: needs the gssapi build dep, which requires libkrb5-dev headers
 #   at install time. The no-layering host policy forbids adding those, so this

@@ -12,6 +12,18 @@
 [Flatpak Preinstall com.github.tchx84.Flatseal]
 Branch=stable
 
+# Wireshark (protocol analyzer). NOTE: the Flathub build is sandboxed and does
+# NOT support live capture -- it opens/analyzes existing pcap/pcapng files only.
+# Live capture needs host/container-side dumpcap privileges (deferred item).
+[Flatpak Preinstall org.wireshark.Wireshark]
+Branch=stable
+
+# Burp Suite Community Edition (web proxy / app-security testing). NOTE: this is
+# a community-maintained Flathub WRAPPER of the proprietary Burp Community build;
+# it is not verified by or affiliated with PortSwigger. ~700 MiB download.
+[Flatpak Preinstall net.portswigger.BurpSuite-Community]
+Branch=stable
+
 # Uncomment the apps you want installed on first boot:
 
 ;[Flatpak Preinstall org.mozilla.firefox]
