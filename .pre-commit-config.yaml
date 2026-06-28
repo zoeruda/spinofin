@@ -8,6 +8,9 @@ repos:
       - id: check-toml
       - id: check-yaml
       - id: end-of-file-fixer
+        # The full-color logo SVG is a committed design asset kept byte-exact;
+        # end-of-file-fixer would rewrite its final line by appending a newline.
+        exclude: '^docs/assets/spinofin-logo-full\.svg$'
       - id: trailing-whitespace
         # The fastfetch ASCII logo is padded with significant trailing spaces to
         # keep its block rectangular; stripping them mangles the designed art.

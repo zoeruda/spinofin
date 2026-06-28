@@ -1,18 +1,61 @@
 # spinofin
 
-A template for building custom bootc operating system images based on the lessons from [Universal Blue](https://universal-blue.org/) and [Bluefin](https://projectbluefin.io). It is designed to be used manually, but is optimized to be bootstraped by GitHub Copilot. After set up you'll have your own custom Linux.
+<p align="center">
+  <img src="docs/assets/spinofin-logo-full.svg" alt="spinofin — a declarable, image-based pentesting OS built on Bluefin" width="440">
+</p>
 
-**What this fork is for:** a declarable, verifiable pentesting OS with Kali Linux-like tooling on a GNOME desktop, built using lessons from Bluefin and [Dakota](https://github.com/projectbluefin/dakota) (Bluefin's GNOME OS bootc prototype). It uses no build-time package layering — see "No Build-Time Layering" below — so the base image can move from Fedora Atomic to a true GNOME OS bootc image later without first unwinding a pile of system packages.
+> A declarable, image-based pentesting OS — built on Bluefin. Kali-grade under the hood, GNOME-clean on the surface.
 
-This template uses the **multi-stage build architecture** from @projectbluefin/distroless, combining resources from multiple OCI containers for modularity and maintainability. See the [Architecture](#architecture) section below for details.
+## How to Get Started with spinofin
 
-**Unlike previous templates, you are not modifying Bluefin and making changes.**: You are assembling your own Bluefin in the same exact way that Bluefin, Aurora, and Bluefin LTS are built. This is way more flexible and better for everyone since the image-agnostic and desktop things we love about Bluefin lives in @projectbluefin/common.
+spinofin ships as a bootc/OCI image you rebase onto an existing [Bluefin](https://projectbluefin.io) install. Three steps: install Bluefin, switch to spinofin, then run the setup recipes.
 
-Instead, you create your own OS repository based on this template, allowing full customization while leveraging Bluefin's robust build system and shared components.
+### 1. Install Bluefin
 
-> Be the one who moves, not the one who is moved.
+spinofin is *assembled from* the Bluefin ecosystem and uses the full Bluefin image as its base, so a stock Bluefin install is the supported starting point. (`bootc switch` rebases an existing bootc system — Bluefin is one; a stock Fedora install is not.)
+
+1. Download the current Bluefin ISO from <https://projectbluefin.io> (see the [installation guide](https://docs.projectbluefin.io/installation/) for variants and hardware notes).
+2. Boot the ISO and install with whole-disk automatic partitioning (~20 minutes).
+3. If you enable Secure Boot, enroll the Universal Blue key when prompted (password: `universalblue`).
+4. Boot into Bluefin and finish first-time setup.
+
+### 2. Switch to spinofin
+
+From the booted Bluefin system, rebase onto the latest spinofin `:stable` image and reboot:
+
+```bash
+sudo bootc switch ghcr.io/zoeruda/spinofin:stable
+sudo systemctl reboot
+```
+
+Image signing is disabled by default (see [Optional: Enable Image Signing](#optional-enable-image-signing)). Once you've enabled cosign signing for your build, add `--enforce-container-sigpolicy` to the `bootc switch` command to require a valid signature on each pull.
+
+### 3. Get set up (ujust recipes)
+
+After rebooting into spinofin, install the tooling. None of this is baked into the image — it is pulled at runtime so the host stays Track-B-ready (see [No Build-Time Layering](#no-build-time-layering)).
+
+Host-side CLI tools (Homebrew) and Python-only tools (pipx):
+
+```bash
+ujust install-default-apps    # host-side CLI tools from the default Brewfile
+ujust install-pipx-tools      # Python-only tools (soaphound, bloodyAD, ...)
+```
+
+Heavy pentest tooling lives in a single shared, rootful Kali container. Provision it once, then pull tool families on demand:
+
+```bash
+ujust setup-kali              # build the shared Kali (kali-rolling) container
+ujust setup-metasploit        # initialise the Metasploit database (msfdb) inside it
+ujust list-kali-toolsets      # list the available Kali tool families
+ujust install-kali-web        # e.g. add the web-app testing family (see list for the rest)
+ujust enter-kali              # drop into a shell in the container
+```
+
+GUI apps (Flatseal, Wireshark, Burp Suite Community) install automatically on first boot via Flatpak — no command needed.
 
 ## What Makes this Raptor Different?
+
+**What this fork is for:** a declarable, verifiable pentesting OS with Kali Linux-like tooling on a GNOME desktop, built using lessons from Bluefin and [Dakota](https://github.com/projectbluefin/dakota) (Bluefin's GNOME OS bootc prototype). It uses no build-time package layering — see "No Build-Time Layering" below — so the base image can move from Fedora Atomic to a true GNOME OS bootc image later without first unwinding a pile of system packages.
 
 This image is based on Bluefin (`ghcr.io/ublue-os/bluefin`, itself Fedora
 Silverblue + GNOME + Bluefin's desktop config), aiming toward Kali Linux-like
@@ -40,16 +83,29 @@ through Homebrew or Flatpak instead:
 
 - **CLI Tools (Homebrew)**: host-side recon/web tooling, all staged into the image at `/usr/share/ublue-os/homebrew/default.Brewfile` and installed at runtime via `ujust install-default-apps` (consistent with the no-layering policy — brew installs live in the user's writable layer, not the image):
   - `nmap` — first pentest tool (Phase 1 sanity check). Unprivileged connect scans only on the host; raw-socket SYN scans are the rootful Kali container's job.
-  - `subfinder`, `amass` — subdomain discovery / attack-surface mapping.
-  - `httpx` — ProjectDiscovery's HTTP probe toolkit (not the Python `httpx` library; see the collision note in the Brewfile).
-  - `nuclei` — template-based vulnerability scanner.
-  - `ffuf`, `feroxbuster`, `gobuster` — web fuzzing / content & DNS discovery.
+  - **Subdomain / DNS / ASN recon:** `subfinder`, `amass`, `dnsx`, `shuffledns` (+ `massdns` as its resolver engine), `mapcidr`, `asnmap`, `cdncheck`, `uncover`.
+  - **HTTP probing & crawling:** `httpx` (ProjectDiscovery's probe — not the Python `httpx` library; see the collision note in the Brewfile), `katana`, `gau`, `tlsx`.
+  - **Web fuzzing / content discovery:** `ffuf`, `feroxbuster`, `gobuster`.
+  - **Web vuln / app testing:** `nuclei` (template scanner), `nikto`, `dalfox`.
+  - **Secret discovery:** `trufflehog`, `gitleaks`.
+  - **TLS inspection:** `sslscan`.
+  - **Password cracking (offline, CPU/GPU, unprivileged):** `john-jumbo`, `hashcat`.
+  - **Online login attacks (connect-based, unprivileged):** `hydra`, `ncrack`.
+  - **Port scanning:** `rustscan` (connect scans, parallels host `nmap`).
+  - **Exploit reference & pivoting:** `exploitdb` (`searchsploit`), `proxychains-ng`.
 
   Which tools go host-side (here) vs. into the Kali container is governed by the **host-vs-container rubric** documented at the top of [`custom/brew/default.Brewfile`](custom/brew/default.Brewfile). Raw-socket / privileged / Kali-only / heavy-dependency tools (e.g. `masscan`, `naabu`) stay in the container; Python-only tools without a clean formula go in the `pipx` bucket below. `pipx` itself is installed via this Brewfile to bootstrap that bucket.
 - **CLI Tools (pipx)**: Python-only tools with no clean Homebrew formula, declared in [`custom/pipx/default.pipx`](custom/pipx/default.pipx) and installed at runtime via `ujust install-pipx-tools` into the user's isolated pipx venvs (same no-layering posture as brew):
   - `bloodyAD` — Active Directory privesc framework (pure-Python wheel, no system build deps).
+  - `soaphound` — BloodHound ingestor over ADWS/SOAP (the Python tool, not the .NET one). Pure-Python; its only real dependency, `impacket`, installs from prebuilt manylinux wheels and pulls no `gssapi`, so no system build headers are needed.
+  - `wafw00f` — web application firewall fingerprinting (pure-Python; not in homebrew-core).
+  - `arjun` — HTTP parameter discovery (has a brew formula but no Linux bottle, so it lands here).
   - Routed to the Kali container instead (documented in the list file): `powerview.py` (needs `libkrb5-dev` build headers, which the no-layering host policy forbids) and `wfuzz` (only a stale Python-2 brew tap exists).
-- **GUI Apps (Flatpak)**: Flatseal (`com.github.tchx84.Flatseal`) — flatpak permission manager, preinstalled on first boot. Chosen as the preinstall sanity-check because the Bluefin base does not already ship it, and it's useful for managing the permissions of sandboxed security apps added later.
+- **Container tool families (Kali metapackages)**: pulled on demand into the shared rootful Kali container via the recipes in [`custom/ujust/kali-toolsets.just`](custom/ujust/kali-toolsets.just) (container-local `apt`, never host layering). `ujust list-kali-toolsets` lists them; e.g. `ujust install-kali-web`, `-passwords`, `-information-gathering`, `-exploitation`. Hardware families (wireless, bluetooth, rfid, sdr) are intentionally omitted pending host device passthrough.
+- **GUI Apps (Flatpak)**: preinstalled on first boot from Flathub (all IDs validated by `validate-flatpaks.yml`):
+  - `com.github.tchx84.Flatseal` — Flatpak permission manager. The original preinstall sanity-check (the Bluefin base does not already ship it), and useful for managing the permissions of the sandboxed security GUIs below.
+  - `org.wireshark.Wireshark` — protocol analyzer. **Note:** the Flathub build is sandboxed and **cannot do live capture** — it opens/analyzes existing `.pcap`/`.pcapng` files. Live capture needs host- or container-side `dumpcap` privileges (the roadmap's known-hard, deferred capability item).
+  - `net.portswigger.BurpSuite-Community` — Burp Suite Community Edition (web proxy / app-testing). **Note:** this is a community-maintained Flathub *wrapper* of the proprietary Burp Community build — it is not verified by or affiliated with PortSwigger.
 
 ### Removed/Disabled
 
@@ -59,7 +115,7 @@ through Homebrew or Flatpak instead:
 
 - None yet beyond the no-layering policy above
 
-_Last updated: 2026-06-26_
+_Last updated: 2026-06-28_
 
 > Replace the placeholders above with your actual customizations whenever you add or remove packages, apps, or configuration. This section is what tells users how your image differs from the base.
 
@@ -350,6 +406,20 @@ cosign verify \
 - [Flatpak Preinstall](custom/flatpaks/README.md) - GUI application setup
 - [ujust Commands](custom/ujust/README.md) - User convenience commands
 - [Build Scripts](build/README.md) - Build-time customization
+
+## finpilot
+
+spinofin is built on [finpilot](https://github.com/projectbluefin/finpilot), Bluefin's template for assembling your own custom bootc image. The generic template description follows.
+
+A template for building custom bootc operating system images based on the lessons from [Universal Blue](https://universal-blue.org/) and [Bluefin](https://projectbluefin.io). It is designed to be used manually, but is optimized to be bootstraped by GitHub Copilot. After set up you'll have your own custom Linux.
+
+This template uses the **multi-stage build architecture** from @projectbluefin/distroless, combining resources from multiple OCI containers for modularity and maintainability. See the [Architecture](#architecture) section below for details.
+
+**Unlike previous templates, you are not modifying Bluefin and making changes.**: You are assembling your own Bluefin in the same exact way that Bluefin, Aurora, and Bluefin LTS are built. This is way more flexible and better for everyone since the image-agnostic and desktop things we love about Bluefin lives in @projectbluefin/common.
+
+Instead, you create your own OS repository based on this template, allowing full customization while leveraging Bluefin's robust build system and shared components.
+
+> Be the one who moves, not the one who is moved.
 
 ## Architecture
 
