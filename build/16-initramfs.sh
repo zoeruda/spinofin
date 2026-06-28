@@ -21,7 +21,13 @@ set -euo pipefail
 echo "::group:: regenerate initramfs (plymouth)"
 
 # Exactly one kernel is shipped in the image; take its modules dir as the kver.
-QUALIFIED_KERNEL="$(ls -1 /usr/lib/modules | grep -E '^[0-9]+\.' | head -n1)"
+# Use a glob rather than `ls | grep` (SC2010).
+QUALIFIED_KERNEL=""
+for moddir in /usr/lib/modules/[0-9]*; do
+    [[ -d "${moddir}" ]] || continue
+    QUALIFIED_KERNEL="${moddir##*/}"
+    break
+done
 if [[ -z "${QUALIFIED_KERNEL}" ]]; then
     echo "ERROR: could not determine kernel version under /usr/lib/modules" >&2
     exit 1
