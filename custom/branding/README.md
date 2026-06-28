@@ -124,12 +124,20 @@ Bluefin's rotating dino set. This is the one surface that diverges from the
 "keep the Bluefin aesthetic" note; delete that JSON to restore the dino shuffle.
 
 ### About / "System Details" logo
-os-release `LOGO=spinofin-logo` (set via the `IMAGE_LOGO` ARG →
-`00-image-info.sh`; last-assignment-wins overrides Fedora's `fedora-logo-icon`).
-The named icon is the **colored** mark shipped at
-`usr/share/icons/hicolor/scalable/apps/spinofin-logo.svg` — colored (not
-symbolic) so it reads on both light and dark About backgrounds without needing
-variants. gnome-control-center reads `LOGO` as a themed icon name.
+**Fedora compiles gnome-control-center with a hardcoded distributor logo**, so
+the About panel ignores os-release `LOGO=` and loads two fixed PNG *files*:
+- `-Ddistributor_logo=/usr/share/pixmaps/fedora_logo_med.png` (light mode)
+- `-Ddark_mode_distributor_logo=/usr/share/pixmaps/fedora_whitelogo_med.png` (dark mode)
+
+ublue replaces both with the Bluefin logo, which is why os-release `LOGO`
+alone did nothing here. We override both (250x102, matching Bluefin's slot):
+`fedora_logo_med.png` = deep-blue wordmark (dark art for the light background),
+`fedora_whitelogo_med.png` = white wordmark (for the dark background). Both
+derive from `spinofin-wordmark.svg`.
+
+We still set os-release `LOGO=spinofin-logo` (+ ship `apps/spinofin-logo.svg`)
+because it is the correct, spec-defined field and other tools read it — it is
+just not what GNOME About uses on a Fedora build.
 
 ---
 
@@ -171,9 +179,11 @@ The primary delivery path is rebasing an existing Bluefin install with
 
 ## Verify on a booted image (can't be checked at build time)
 
-- **About / name:** `grep -E '^(PRETTY_NAME|LOGO)=' /etc/os-release` → expect
-  `spinofin` / `spinofin-logo`. If still Bluefin, the os-release rewrite didn't
-  run (rebuild and re-switch).
+- **About name:** `grep -E '^PRETTY_NAME=' /etc/os-release` → `spinofin`. If
+  still Bluefin, the os-release rewrite didn't run (rebuild and re-switch).
+- **About logo:** comes from the compiled-in pixmaps, NOT os-release `LOGO`.
+  Confirm `/usr/share/pixmaps/fedora_logo_med.png` and `fedora_whitelogo_med.png`
+  are the spinofin wordmarks. The panel picks light vs dark by the system theme.
 - **Panel logo:** if unchanged, check the keyfile arrived
   (`cat /etc/dconf/db/distro.d/99-spinofin-branding`) and which extension is
   live; the locks force both Custom Command List and Logo Menu.
