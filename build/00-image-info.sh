@@ -67,31 +67,38 @@ echo "  image-vendor: ${IMAGE_VENDOR}"
 ###############################################################################
 # Customize /usr/lib/os-release
 ###############################################################################
-# Only modify if the file exists and VARIANT_ID is not already set
-if [[ -f "${OS_RELEASE}" ]] && ! grep -q "^VARIANT_ID=" "${OS_RELEASE}"; then
-    # Read existing values
+# NOTE: the full Bluefin base ALREADY sets VARIANT_ID (=bluefin), so the old
+# `! grep VARIANT_ID` guard skipped this whole block -> PRETTY_NAME and LOGO
+# never landed (GNOME About + installer title stayed "Bluefin"). Instead we
+# replace each key in place if present, else append. No duplicate keys, and our
+# values always win regardless of what the base set.
+if [[ -f "${OS_RELEASE}" ]]; then
     if [[ -n "${VERSION:-}" ]]; then
         OS_VERSION="${VERSION}"
     else
         OS_VERSION="${UBLUE_IMAGE_TAG}"
     fi
 
-    # Append our identity
-    cat >>"${OS_RELEASE}" <<EOF
+    set_osr() {
+        local key="$1" val="$2"
+        if grep -q "^${key}=" "${OS_RELEASE}"; then
+            sed -i "s|^${key}=.*|${key}=\"${val}\"|" "${OS_RELEASE}"
+        else
+            echo "${key}=\"${val}\"" >>"${OS_RELEASE}"
+        fi
+    }
 
-# ${IMAGE_NAME} image identity
-VARIANT_ID="${IMAGE_FLAVOR}"
-PRETTY_NAME="${IMAGE_PRETTY_NAME}"
-NAME="${IMAGE_NAME}"
-IMAGE_ID="${IMAGE_NAME}"
-IMAGE_VERSION="${OS_VERSION}"
-ID_LIKE="${IMAGE_LIKE}"
-LOGO="${IMAGE_LOGO}"
-HOME_URL="${HOME_URL}"
-DOCUMENTATION_URL="${DOCUMENTATION_URL}"
-SUPPORT_URL="${SUPPORT_URL}"
-BUG_REPORT_URL="${BUG_REPORT_URL}"
-EOF
+    set_osr VARIANT_ID    "${IMAGE_FLAVOR}"
+    set_osr PRETTY_NAME   "${IMAGE_PRETTY_NAME}"
+    set_osr NAME          "${IMAGE_NAME}"
+    set_osr IMAGE_ID      "${IMAGE_NAME}"
+    set_osr IMAGE_VERSION "${OS_VERSION}"
+    set_osr ID_LIKE       "${IMAGE_LIKE}"
+    set_osr LOGO          "${IMAGE_LOGO}"
+    set_osr HOME_URL      "${HOME_URL}"
+    set_osr DOCUMENTATION_URL "${DOCUMENTATION_URL}"
+    set_osr SUPPORT_URL   "${SUPPORT_URL}"
+    set_osr BUG_REPORT_URL "${BUG_REPORT_URL}"
 
-    echo "Customized ${OS_RELEASE}"
+    echo "Customized ${OS_RELEASE} (PRETTY_NAME=${IMAGE_PRETTY_NAME}, LOGO=${IMAGE_LOGO})"
 fi

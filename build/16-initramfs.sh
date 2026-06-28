@@ -1,0 +1,37 @@
+#!/usr/bin/bash
+
+set -euo pipefail
+
+###############################################################################
+# Regenerate initramfs (Plymouth boot splash)
+###############################################################################
+# The Plymouth boot splash shown during EARLY boot reads its theme/watermark
+# from the initramfs, not from /usr. The Bluefin base bakes ITS watermark into
+# the initramfs at base-build time, so swapping /usr/share/plymouth/.../
+# watermark.png in 15-branding.sh alone leaves the old Bluefin watermark on the
+# boot screen. Rebuilding the initramfs here re-embeds the spinofin watermark.
+#
+# This regenerates an existing artifact -- it installs NO packages, so it does
+# not touch the no-layering policy. Mirrors the base's 19-initramfs.sh.
+#
+# NOTE: requires the branding watermark to already be in place, so this MUST run
+# AFTER 15-branding.sh in the Containerfile.
+###############################################################################
+
+echo "::group:: regenerate initramfs (plymouth)"
+
+# Exactly one kernel is shipped in the image; take its modules dir as the kver.
+QUALIFIED_KERNEL="$(ls -1 /usr/lib/modules | grep -E '^[0-9]+\.' | head -n1)"
+if [[ -z "${QUALIFIED_KERNEL}" ]]; then
+    echo "ERROR: could not determine kernel version under /usr/lib/modules" >&2
+    exit 1
+fi
+echo "kernel: ${QUALIFIED_KERNEL}"
+
+export DRACUT_NO_XATTR=1
+/usr/bin/dracut --no-hostonly --kver "${QUALIFIED_KERNEL}" --reproducible -v \
+    --add ostree -f "/usr/lib/modules/${QUALIFIED_KERNEL}/initramfs.img"
+chmod 0600 "/usr/lib/modules/${QUALIFIED_KERNEL}/initramfs.img"
+
+echo "::endgroup::"
+echo "initramfs regenerated with spinofin plymouth watermark"

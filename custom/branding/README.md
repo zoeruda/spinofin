@@ -135,29 +135,50 @@ variants. gnome-control-center reads `LOGO` as a themed icon name.
 
 ## Wiring (now in place)
 
-`build/15-branding.sh` (invoked from the Containerfile after `10-build.sh`)
-merge-copies `system_files/` into `/`, runs `dconf update` (compiles the
-`distro` + `gdm` dbs), and refreshes the hicolor icon cache. The `PRETTY_NAME`
-fix is the `IMAGE_PRETTY_NAME` ARG in the Containerfile, consumed by
-`00-image-info.sh`.
+Build steps (Containerfile, after `10-build.sh`):
+- `build/15-branding.sh` — merge-copies `system_files/` into `/`, runs
+  `dconf update` (compiles the `distro` + `gdm` dbs), refreshes the hicolor
+  icon cache.
+- `build/16-initramfs.sh` — regenerates the initramfs so the Plymouth boot
+  splash embeds the spinofin watermark (early boot reads the initramfs, not
+  `/usr`). Mirrors the base's dracut invocation; no package install.
 
-Wired surfaces: Plymouth watermark, GDM login logo, panel logo (Custom Command
-List `menuicon-setting`), fastfetch logo, About-page `LOGO=`. Still **deferred**:
-Anaconda installer art (bootc-image-builder mechanism unconfirmed).
+Identity (`PRETTY_NAME`, `LOGO`, ...) is the `IMAGE_PRETTY_NAME` / `IMAGE_LOGO`
+ARGs consumed by `00-image-info.sh`, which now **replaces keys in place** rather
+than gating on `VARIANT_ID` (the Bluefin base sets `VARIANT_ID`, so the old
+guard skipped the whole block — that was why About/PRETTY_NAME stayed Bluefin).
+
+Wired surfaces: Plymouth watermark (+ initramfs), GDM login logo, panel logo
+(**both** Custom Command List `menuicon-setting` and Logo Menu `custom-icon-path`,
+with dconf **locks**), fastfetch logo, About-page `LOGO=`. Still **deferred**:
+Anaconda installer art.
+
+## Distribution = `bootc switch` (what that constrains)
+
+The primary delivery path is rebasing an existing Bluefin install with
+`bootc switch`. That has specific semantics the wiring is built around:
+- **`/usr` is fully replaced** → os-release, icons, Plymouth watermark, the
+  regenerated initramfs, fastfetch logo all apply.
+- **`/etc` is 3-way merged** → our new dconf keyfiles/profile are added (this is
+  why GDM + fastfetch worked); `dconf-update.service` recompiles dbs on boot.
+- **`/home` and the per-user dconf db are untouched** → a plain system default
+  can't override a value the prior Bluefin setup wrote into the user's dconf.
+  That is why the panel logo needs **locks**, not just a default: a lock forces
+  the system value over the user db. (Tradeoff: users can't change the panel
+  logo; drop `locks/99-spinofin-branding` to allow it.)
+- First-boot services / user-setup hooks **do not re-run** on an existing
+  install, so nothing here relies on them.
 
 ## Verify on a booted image (can't be checked at build time)
 
-- **Plymouth splash:** the watermark is also cached in the initramfs. If the
-  boot splash still shows the old/stock watermark, the initramfs needs
-  regenerating in the build — the `/usr/share` file replacement alone may not
-  reach early boot. The late (post-switchroot) splash reads the system copy.
-- **GDM login logo:** depends on (a) the shipped `etc/dconf/profile/gdm` being
-  honored and (b) the running GNOME still rendering `org.gnome.login-screen
-  logo`. If no logo appears at the bottom of the greeter, confirm the gdm
-  profile took effect.
-- **Panel + fastfetch:** the panel icon and fastfetch logo render monochrome
-  (recolored by the shell / terminal). The fastfetch `$1`/`$2` color regions
-  are **not** colorized by the `ublue-fastfetch` wrapper (it doesn't pass
-  `--logo-color-N`), so the terminal logo shows in a single accent color. The
-  fastfetch override also replaces Bluefin's rotating dino logos — delete
-  `etc/ublue-os/fastfetch.json` to restore the shuffle.
+- **About / name:** `grep -E '^(PRETTY_NAME|LOGO)=' /etc/os-release` → expect
+  `spinofin` / `spinofin-logo`. If still Bluefin, the os-release rewrite didn't
+  run (rebuild and re-switch).
+- **Panel logo:** if unchanged, check the keyfile arrived
+  (`cat /etc/dconf/db/distro.d/99-spinofin-branding`) and which extension is
+  live; the locks force both Custom Command List and Logo Menu.
+- **Plymouth:** if the boot splash still shows Bluefin, the initramfs wasn't
+  regenerated — confirm `16-initramfs.sh` ran in the build.
+- **fastfetch** renders monochrome: the `ublue-fastfetch` wrapper doesn't pass
+  `--logo-color-N`, so the `$1`/`$2` regions collapse to one accent color. Delete
+  `etc/ublue-os/fastfetch.json` to restore Bluefin's dino shuffle.
