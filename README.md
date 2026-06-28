@@ -46,6 +46,10 @@ Heavy pentest tooling lives in a single shared, rootful Kali container. Provisio
 ```bash
 ujust setup-kali              # build the shared Kali (kali-rolling) container
 ujust setup-metasploit        # initialise the Metasploit database (msfdb) inside it
+ujust setup-bloodhound        # install + provision BloodHound CE (databases)
+ujust bloodhound-start        # start BloodHound CE (single 'get going' command)
+ujust export-impacket         # expose impacket-* commands to the host shell
+ujust link-wordlists          # expose the Kali wordlists to host-native tools
 ujust list-kali-toolsets      # list the available Kali tool families
 ujust install-kali-web        # e.g. add the web-app testing family (see list for the rest)
 ujust enter-kali              # drop into a shell in the container
@@ -97,15 +101,22 @@ through Homebrew or Flatpak instead:
   Which tools go host-side (here) vs. into the Kali container is governed by the **host-vs-container rubric** documented at the top of [`custom/brew/default.Brewfile`](custom/brew/default.Brewfile). Raw-socket / privileged / Kali-only / heavy-dependency tools (e.g. `masscan`, `naabu`) stay in the container; Python-only tools without a clean formula go in the `pipx` bucket below. `pipx` itself is installed via this Brewfile to bootstrap that bucket.
 - **CLI Tools (pipx)**: Python-only tools with no clean Homebrew formula, declared in [`custom/pipx/default.pipx`](custom/pipx/default.pipx) and installed at runtime via `ujust install-pipx-tools` into the user's isolated pipx venvs (same no-layering posture as brew):
   - `bloodyAD` — Active Directory privesc framework (pure-Python wheel, no system build deps).
-  - `soaphound` — BloodHound ingestor over ADWS/SOAP (the Python tool, not the .NET one). Pure-Python; its only real dependency, `impacket`, installs from prebuilt manylinux wheels and pulls no `gssapi`, so no system build headers are needed.
+  - `soaphound` — BloodHound ingestor over ADWS/SOAP (the Python tool, not the .NET one). Pure-Python; its only real dependency, `impacket`, installs from prebuilt manylinux wheels and pulls no `gssapi`, so no system build headers are needed. That bundled `impacket` is isolated inside soaphound's own pipx venv and is **not** on `$PATH` — the standalone `impacket-*` CLI scripts come from the **container** instead (see below), so there's no host/container collision.
   - `wafw00f` — web application firewall fingerprinting (pure-Python; not in homebrew-core).
   - `arjun` — HTTP parameter discovery (has a brew formula but no Linux bottle, so it lands here).
   - Routed to the Kali container instead (documented in the list file): `powerview.py` (needs `libkrb5-dev` build headers, which the no-layering host policy forbids) and `wfuzz` (only a stale Python-2 brew tap exists).
 - **Container tool families (Kali metapackages)**: pulled on demand into the shared rootful Kali container via the recipes in [`custom/ujust/kali-toolsets.just`](custom/ujust/kali-toolsets.just) (container-local `apt`, never host layering). `ujust list-kali-toolsets` lists them; e.g. `ujust install-kali-web`, `-passwords`, `-information-gathering`, `-exploitation`. Hardware families (wireless, bluetooth, rfid, sdr) are intentionally omitted pending host device passthrough.
+- **Container-baked tooling, wordlists & databases**: declared in [`custom/distrobox/spinofin-kali.ini`](custom/distrobox/spinofin-kali.ini) and managed by recipes in [`custom/ujust/kali-container.just`](custom/ujust/kali-container.just). Baked into the container at assemble time: `metasploit-framework` + `postgresql`, `impacket-scripts`, and the Kali wordlist trees `seclists` + `wordlists` (at the canonical `/usr/share/seclists` and `/usr/share/wordlists` — `seclists` is ~1 GB+, so the assemble is heavier by design). Setup/launch recipes:
+  - `ujust setup-metasploit` — initialise the Metasploit `msfdb` database.
+  - `ujust setup-bloodhound` → `ujust bloodhound-start` — install BloodHound CE on demand, provision its PostgreSQL + neo4j databases (`bloodhound-setup`), then start it (`bloodhound-start`), mirroring Kali's own helpers.
+  - `ujust export-impacket` — surface the container's `impacket-*` scripts to the host shell as distrobox wrappers in `~/.local/bin`, so `impacket-secretsdump` (etc.) run from the host but execute in the container.
+  - `ujust link-wordlists` — make the Kali wordlists usable by **host-native** tools. distrobox shares only `$HOME` (not the container's `/usr`), so this relocates `seclists` + `wordlists` once into `~/.local/share/spinofin/wordlists` (also linked as `~/wordlists`) and symlinks the container's `/usr/share/{seclists,wordlists}` back to it — one copy, reachable from both host and container.
 - **GUI Apps (Flatpak)**: preinstalled on first boot from Flathub (all IDs validated by `validate-flatpaks.yml`):
   - `com.github.tchx84.Flatseal` — Flatpak permission manager. The original preinstall sanity-check (the Bluefin base does not already ship it), and useful for managing the permissions of the sandboxed security GUIs below.
-  - `org.wireshark.Wireshark` — protocol analyzer. **Note:** the Flathub build is sandboxed and **cannot do live capture** — it opens/analyzes existing `.pcap`/`.pcapng` files. Live capture needs host- or container-side `dumpcap` privileges (the roadmap's known-hard, deferred capability item).
+  - `org.wireshark.Wireshark` — protocol analyzer. **Note:** the Flathub build is sandboxed and **cannot do live capture** — it opens/analyzes existing `.pcap`/`.pcapng` files. For promiscuous-mode / live capture, the move is to install Wireshark **inside the Kali container** via apt and run it as root from there (`distrobox enter --root spinofin-kali -- sudo wireshark`); the rootful container has the `CAP_NET_RAW` capture needs. Host-side `dumpcap` privileges remain the roadmap's known-hard, deferred item.
   - `net.portswigger.BurpSuite-Community` — Burp Suite Community Edition (web proxy / app-testing). **Note:** this is a community-maintained Flathub *wrapper* of the proprietary Burp Community build — it is not verified by or affiliated with PortSwigger.
+  - `net.giuspen.cherrytree` — Cherrytree, hierarchical note-taking for structured engagement notes. (Current Flathub ID is `net.giuspen.cherrytree`; the older `com.giuspen.cherrytree` is superseded.)
+  - `md.obsidian.Obsidian` — Obsidian, Markdown knowledge base for notes/reporting. Verified by the Obsidian team on Flathub; proprietary EULA, ~600 MiB.
 
 ### Removed/Disabled
 

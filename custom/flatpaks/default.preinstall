@@ -15,6 +15,10 @@ Branch=stable
 # Wireshark (protocol analyzer). NOTE: the Flathub build is sandboxed and does
 # NOT support live capture -- it opens/analyzes existing pcap/pcapng files only.
 # Live capture needs host/container-side dumpcap privileges (deferred item).
+# For promiscuous-mode / live capture, the move is to install wireshark INSIDE
+# the Kali container via apt and run it as sudo from inside the container
+# (`distrobox enter --root spinofin-kali -- sudo wireshark`); the rootful
+# container has the CAP_NET_RAW needed for capture.
 [Flatpak Preinstall org.wireshark.Wireshark]
 Branch=stable
 
@@ -22,6 +26,17 @@ Branch=stable
 # a community-maintained Flathub WRAPPER of the proprietary Burp Community build;
 # it is not verified by or affiliated with PortSwigger. ~700 MiB download.
 [Flatpak Preinstall net.portswigger.BurpSuite-Community]
+Branch=stable
+
+# Cherrytree (hierarchical note-taking) -- handy for structured pentest notes.
+# Current Flathub ID is net.giuspen.cherrytree (the older com.giuspen.cherrytree
+# is superseded; the project domain moved .com -> .net).
+[Flatpak Preinstall net.giuspen.cherrytree]
+Branch=stable
+
+# Obsidian (Markdown knowledge base) -- engagement notes / reporting. Verified
+# by the Obsidian team on Flathub; proprietary EULA, ~600 MiB.
+[Flatpak Preinstall md.obsidian.Obsidian]
 Branch=stable
 
 # Uncomment the apps you want installed on first boot:
