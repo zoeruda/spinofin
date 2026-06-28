@@ -26,7 +26,11 @@
 ## metapackage alone would not make those tools functional, so we omit them
 ## rather than ship a misleading recipe.
 
-kali_box := "spinofin-kali"
+# NOTE: `kali_box` is intentionally NOT defined here. It is declared in
+# kali-container.just, which the build concatenates into the same
+# 60-custom.just -- defining it again would make `just` fail with
+# "variable `kali_box` has multiple definitions". The recipes below reference
+# it (evaluated at run time), so it resolves from the merged justfile.
 
 # Install one Kali tool family into the container (arg = the kali-tools-<family> suffix)
 [group('Kali Toolsets')]
