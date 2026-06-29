@@ -123,23 +123,47 @@ bloodhound-start:
     set -euo pipefail
     # Kali's `bloodhound-start` waits for the API in a busy curl loop and then
     # runs xdg-open -- both of which hang in this headless, rootful container (no
-    # browser, no display). So instead of the blocking wrapper we start the
-    # stack directly and NON-BLOCKING, and you open the UI in your HOST browser.
-    # If this errors with "System has not been booted with systemd as init
-    # system", the container predates init=true: `ujust rebuild-kali`, then
-    # `ujust setup-bloodhound` again. Run setup first if you have not.
+    # browser, no display). So instead of the blocking wrapper we bring the
+    # stack up ourselves and open the UI in your HOST browser.
+    #
+    # WHY THIS RE-RUNS bloodhound-setup (not a hand-rolled `systemctl start`):
+    # after a host/container reboot NOTHING here auto-starts -- Kali ships
+    # `bloodhound.service` DISABLED by default, and neo4j is not a systemd unit
+    # at all (see below) -- so a plain `systemctl start bloodhound` on a cold
+    # boot can come up before postgres/neo4j are actually ready, leaving the
+    # API/UI unreachable (this was the bug: it "worked" only if you re-ran
+    # `setup-bloodhound` first). `bloodhound-setup` is Kali's own proven,
+    # idempotent sequence for bringing up postgres + the bloodhound DB + neo4j
+    # correctly -- it does NOT reset an already-configured neo4j password or
+    # blow away the database, it only acts on what isn't already running/
+    # present. Re-running it here (every time) is what makes `bloodhound-start`
+    # alone sufficient after a reboot. It does NOT touch apt, so it is fast and
+    # works fully offline. If this errors with "System has not been booted with
+    # systemd as init system", the container predates init=true: `ujust
+    # rebuild-kali`, then `ujust setup-bloodhound` again.
     #
     # NEO4J IS NOT A SYSTEMD UNIT HERE: Kali's bloodhound package starts/stops
     # neo4j directly via its own `neo4j` binary (LSB-style start/status), not
     # via a neo4j.service unit -- confirmed by bloodhound-setup's own output
     # ("Starting Neo4j... Started neo4j (pid:...)") and by bloodhound-stop
     # checking neo4j's status SEPARATELY from bloodhound.service's systemd
-    # status. So we do the same: only postgresql and bloodhound (both real
-    # units) go through systemctl; neo4j is started via its own binary if not
-    # already running. This also means any warning like "Unit neo4j.service
-    # not found" (e.g. from bloodhound.service's own unit file referencing it)
-    # is EXPECTED and safe to ignore -- it is not a sign neo4j failed to start.
-    distrobox enter --root {{ kali_box }} -- sudo bash -lc 'systemctl start --no-block postgresql || true; neo4j_bin="$(command -v neo4j || echo /usr/share/neo4j/bin/neo4j)"; "$neo4j_bin" status >/dev/null 2>&1 || "$neo4j_bin" start; systemctl start --no-block bloodhound || true'
+    # status. So a warning like "Unit neo4j.service not found" (e.g. from
+    # bloodhound.service's own unit file referencing it) is EXPECTED and safe
+    # to ignore -- bloodhound-setup already brings neo4j up the correct way.
+    distrobox enter --root {{ kali_box }} -- sudo bash -lc '
+        if ! command -v bloodhound-setup >/dev/null 2>&1; then
+            echo "ERROR: BloodHound is not installed yet. Run: ujust setup-bloodhound" >&2
+            exit 1
+        fi
+        shim=/tmp/spinofin-nobrowser
+        mkdir -p "$shim"
+        for b in xdg-open sensible-browser x-www-browser www-browser gnome-www-browser firefox; do
+            printf "#!/bin/sh\nexit 0\n" > "$shim/$b"
+            chmod +x "$shim/$b"
+        done
+        PATH="$shim:$PATH" BROWSER=true bloodhound-setup >/dev/null
+        systemctl start --no-block bloodhound || true
+    '
     echo ""
     echo "BloodHound is starting in the background (give it ~30s)."
     echo "Open the UI in your HOST browser:  http://localhost:8080"
@@ -149,7 +173,7 @@ bloodhound-start:
     echo "NOTE: a warning mentioning 'neo4j.service' (e.g. 'Unit neo4j.service"
     echo "not found') is EXPECTED and safe to ignore. Kali's bloodhound package"
     echo "manages neo4j directly via its own binary, not as a systemd unit --"
-    echo "the line above already started/verified it that way, so the database"
+    echo "the step above already started/verified it that way, so the database"
     echo "is up regardless of that message."
 
 # Surface the container's impacket-* scripts to the host shell (distrobox export)
