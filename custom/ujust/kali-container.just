@@ -62,8 +62,8 @@ setup-metasploit:
     set -euo pipefail
     echo "Starting PostgreSQL and initializing the Metasploit database..."
     # Runs inside the rootful Kali container. Idempotent: safe to re-run.
-    # - postgresql is started via the sysv 'service' wrapper (the container is
-    #   not an init/systemd container, so 'systemctl' is not used here).
+    # - postgresql is started via the 'service' wrapper (still works now that
+    #   the box is an init container; 'systemctl start postgresql' works too).
     # - msfdb MUST be run as root on current Kali (it guards at the top and
     #   exits otherwise). It writes a SYSTEM-WIDE config to
     #   /usr/share/metasploit-framework/config/database.yml, so the exported
@@ -83,10 +83,10 @@ setup-bloodhound:
     echo "Installing BloodHound CE and provisioning its databases..."
     # Mirrors `setup-metasploit`. Kali's `bloodhound` package ships the
     # bloodhound-setup helper, which starts PostgreSQL + neo4j and creates the
-    # BloodHound databases. It starts those services directly (not via systemd),
-    # so it works in this non-init container. bloodhound is installed on demand
-    # here rather than baked into the .ini because it pulls neo4j + a JVM and
-    # not every user wants that weight. Idempotent: safe to re-run.
+    # BloodHound databases. The box is an init container (init=true in the .ini),
+    # so systemd-managed services work. bloodhound is installed on demand here
+    # rather than baked into the .ini because it pulls neo4j + a JVM and not
+    # every user wants that weight. Idempotent: safe to re-run.
     distrobox enter --root {{ kali_box }} -- sudo bash -lc 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y bloodhound && bloodhound-setup'
     echo ""
     echo "Done. Start BloodHound with:  ujust bloodhound-start"
@@ -98,12 +98,14 @@ setup-bloodhound:
 bloodhound-start:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Kali's `bloodhound-start` helper brings up the BloodHound CE stack.
-    # CAVEAT: on stock Kali this manages a systemd unit (bloodhound.service).
-    # This container is NOT an init/systemd container, so if bloodhound-start
-    # shells out to systemctl it may not work unmodified -- UNVERIFIED here and
-    # needs a real-boot check (see the README BloodHound note). Run setup first
-    # if you have not:  ujust setup-bloodhound
+    # Kali's `bloodhound-start` helper brings up the BloodHound CE stack via its
+    # systemd unit (bloodhound.service). That requires systemd as PID 1 -- which
+    # is why the box is now an init container (init=true in the .ini). If this
+    # errors with "System has not been booted with systemd as init system",
+    # the container predates that change: rebuild it with `ujust rebuild-kali`,
+    # then `ujust setup-bloodhound` again. Still validate on a real boot -- init
+    # containers don't run every systemd service flawlessly. Run setup first if
+    # you have not:  ujust setup-bloodhound
     distrobox enter --root {{ kali_box }} -- sudo bloodhound-start
 
 # Surface the container's impacket-* scripts to the host shell (distrobox export)
@@ -118,32 +120,44 @@ export-impacket:
     # to drift. Re-runnable; new scripts appear after a container update + re-run.
     # NOTE: uses the same rootful distrobox-export path as the msfconsole export,
     # so it inherits the same rootful-$HOME considerations -- validate on real boot.
+    #
+    # PRIVILEGE CAVEAT: the exported ~/.local/bin wrappers enter the container as
+    # your USER (unprivileged). Several impacket tools need root INSIDE the
+    # container -- e.g. raw sockets / low ports for ntlmrelayx, the ICMP/ping
+    # paths, rpcdump on some transports. Those work with sudo in the container
+    # but fail through the plain exported wrapper. To run one as root in the
+    # container FROM THE HOST, bypass the wrapper and use the container's sudo:
+    #     distrobox enter --root {{ kali_box }} -- sudo impacket-ntlmrelayx <args>
+    # (general form: distrobox enter --root {{ kali_box }} -- sudo impacket-<tool> <args>)
     distrobox enter --root {{ kali_box }} -- bash -lc 'n=0; for b in /usr/bin/impacket-*; do distrobox-export --bin "$b" --export-path "$HOME/.local/bin" >/dev/null 2>&1 || true; n=$((n + 1)); done; echo "Exported ${n} impacket-* commands to ~/.local/bin"'
-    echo "Done. Try:  impacket-secretsdump -h   (runs in the container)"
+    echo "Done. Unprivileged tools: run impacket-secretsdump (etc.) straight from your shell."
+    echo "Tools needing root in the container (e.g. ntlmrelayx) -- run with the container's sudo:"
+    echo "  distrobox enter --root {{ kali_box }} -- sudo impacket-<tool> <args>"
 
 # Expose the container's Kali wordlists to HOST-native tools (single copy, via $HOME)
 [group('Kali')]
 link-wordlists:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Host-native tools (ffuf, feroxbuster, gobuster, hydra, ...) cannot see the
-    # container's /usr/share: distrobox shares only $HOME between host and
-    # container, NOT the container's /usr. So a bare symlink to
-    # /usr/share/seclists would be dead on the host. Instead we relocate each
-    # tree ONCE into the shared $HOME (which the host sees directly) and symlink
-    # the container's canonical /usr/share/<name> back to it -- single copy,
-    # host gets the real files, the container keeps its standard paths.
-    # Idempotent: skips trees already linked. Re-run after `rebuild-kali` (a
-    # fresh assemble reinstalls the apt copy as a real dir). Uses the shared
-    # rootful $HOME, so -- like the msfconsole/impacket exports -- confirm the
-    # path on a real boot.
-    distrobox enter --root {{ kali_box }} -- bash -lc 'set -euo pipefail; dest="$HOME/.local/share/spinofin/wordlists"; mkdir -p "$dest"; for name in seclists wordlists; do src="/usr/share/$name"; if [ -L "$src" ]; then echo "$src already linked -- skipping"; continue; fi; if [ ! -d "$src" ]; then echo "WARN: $src not found (run setup-kali first?)" >&2; continue; fi; [ -e "$dest/$name" ] || { echo "Copying $src -> $dest/$name (one-time, may be large)..."; cp -a "$src" "$dest/$name"; }; sudo rm -rf "$src"; sudo ln -sfn "$dest/$name" "$src"; echo "Linked /usr/share/$name -> $dest/$name"; done'
+    # Make the container's Kali wordlists usable by HOST-native tools (john,
+    # hashcat, ffuf, ...). Two gotchas: (1) distrobox shares only $HOME -- not
+    # the container's /usr -- so files must land under $HOME; and (2)
+    # /usr/share/wordlists is mostly SYMLINKS into other packages' dirs (dirb,
+    # wfuzz, metasploit, ...), many of them DANGLING, which are useless on the
+    # host. So we stage REAL files only: relocate the seclists tree (its password
+    # lists are real files) into $HOME and symlink /usr/share/seclists back, and
+    # decompress rockyou into a ready-to-use plaintext list. We do NOT mirror the
+    # /usr/share/wordlists symlink farm. Idempotent. Re-run after `rebuild-kali`.
+    # Uses the shared rootful $HOME -- confirm on a real boot.
+    distrobox enter --root {{ kali_box }} -- bash -lc 'set -euo pipefail; dest="$HOME/.local/share/spinofin/wordlists"; mkdir -p "$dest"; if [ -L /usr/share/seclists ]; then echo "seclists already linked"; elif [ -d /usr/share/seclists ]; then [ -e "$dest/seclists" ] || { echo "Copying seclists (one-time, ~1GB)..."; cp -a /usr/share/seclists "$dest/seclists"; }; sudo rm -rf /usr/share/seclists; sudo ln -sfn "$dest/seclists" /usr/share/seclists; echo "Linked /usr/share/seclists -> $dest/seclists"; else echo "WARN: /usr/share/seclists missing (run setup-kali first?)" >&2; fi; if [ -f /usr/share/wordlists/rockyou.txt.gz ]; then [ -f "$dest/rockyou.txt" ] || { echo "Decompressing rockyou.txt..."; gunzip -c /usr/share/wordlists/rockyou.txt.gz > "$dest/rockyou.txt"; }; elif [ -f /usr/share/wordlists/rockyou.txt ]; then cp -n /usr/share/wordlists/rockyou.txt "$dest/rockyou.txt"; else echo "WARN: rockyou not found under /usr/share/wordlists" >&2; fi; echo "Staged real files in $dest"'
     ln -sfn "$HOME/.local/share/spinofin/wordlists" "$HOME/wordlists"
     echo ""
-    echo "Done. Host-native tools can now use:"
-    echo "  ~/wordlists/seclists     (also at ~/.local/share/spinofin/wordlists/seclists)"
-    echo "  ~/wordlists/wordlists    (rockyou.txt.gz, etc.)"
-    echo "The container still sees them at /usr/share/{seclists,wordlists}."
+    echo "Done. Real, host-usable wordlists for john / hashcat:"
+    echo "  ~/wordlists/rockyou.txt"
+    echo "  ~/wordlists/seclists/Passwords/...   (xato-net, Common-Credentials, etc.)"
+    echo "Examples:"
+    echo "  hashcat -m 0 -a 0 hashes.txt ~/wordlists/rockyou.txt"
+    echo "  john --wordlist=\$HOME/wordlists/rockyou.txt hashes.txt"
 
 # Remove the Kali toolbox container entirely
 [group('Kali')]
