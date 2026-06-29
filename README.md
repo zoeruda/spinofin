@@ -97,11 +97,13 @@ through Homebrew or Flatpak instead:
   - **Online login attacks (connect-based, unprivileged):** `hydra`, `ncrack`.
   - **Port scanning:** `rustscan` (connect scans, parallels host `nmap`).
   - **Exploit reference & pivoting:** `exploitdb` (`searchsploit`), `proxychains-ng`.
+  - **Networking utilities:** `netcat`, `rlwrap` (line-editing for tools that lack their own, e.g. raw netcat shells).
 
   Which tools go host-side (here) vs. into the Kali container is governed by the **host-vs-container rubric** documented at the top of [`custom/brew/default.Brewfile`](custom/brew/default.Brewfile). Raw-socket / privileged / Kali-only / heavy-dependency tools (e.g. `masscan`, `naabu`) stay in the container; Python-only tools without a clean formula go in the `pipx` bucket below. `pipx` itself is installed via this Brewfile to bootstrap that bucket.
 - **CLI Tools (pipx)**: Python-only tools with no clean Homebrew formula, declared in [`custom/pipx/default.pipx`](custom/pipx/default.pipx) and installed at runtime via `ujust install-pipx-tools` into the user's isolated pipx venvs (same no-layering posture as brew):
   - `bloodyAD` — Active Directory privesc framework (pure-Python wheel, no system build deps).
   - `soaphound` — BloodHound ingestor over ADWS/SOAP (the Python tool, not the .NET one). Pure-Python; its only real dependency, `impacket`, installs from prebuilt manylinux wheels and pulls no `gssapi`, so no system build headers are needed. That bundled `impacket` is isolated inside soaphound's own pipx venv and is **not** on `$PATH` — the standalone `impacket-*` CLI scripts come from the **container** instead (see below), so there's no host/container collision.
+  - `bloodhound-ce` — provides the `bloodhound-ce-python` ingestor for **BloodHound CE** (not legacy `bloodhound-python`). Same lineage as impacket and the same shape as `soaphound`: a `py3-none-any` wheel whose dependencies (dnspython, impacket, ldap3, pyasn1, pycryptodome) are pure-Python or ship prebuilt manylinux wheels — no `gssapi`, no build headers.
   - `wafw00f` — web application firewall fingerprinting (pure-Python; not in homebrew-core).
   - `arjun` — HTTP parameter discovery (has a brew formula but no Linux bottle, so it lands here).
   - Routed to the Kali container instead (documented in the list file): `powerview.py` (needs `libkrb5-dev` build headers, which the no-layering host policy forbids) and `wfuzz` (only a stale Python-2 brew tap exists).
