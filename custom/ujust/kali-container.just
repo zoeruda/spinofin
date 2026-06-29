@@ -44,7 +44,21 @@ setup-kali:
 enter-kali:
     #!/usr/bin/env bash
     set -euo pipefail
-    distrobox enter --root {{ kali_box }}
+    if ! command -v distrobox >/dev/null 2>&1; then
+        echo "ERROR: distrobox not found on host." >&2
+        exit 1
+    fi
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
+    # Hand off to an interactive shell. Leaving it via Ctrl+C, Ctrl+D, or typing
+    # `exit` (which inherits your LAST command's exit code -- possibly nonzero,
+    # e.g. if a scan you ran reported "target down") are all normal, intentional
+    # ways out. None of them mean THIS recipe failed, so we deliberately discard
+    # whatever exit code the interactive session ends with.
+    distrobox enter --root {{ kali_box }} || true
 
 # Rebuild the Kali toolbox container from scratch (replaces the existing one)
 [group('Kali')]
@@ -110,16 +124,33 @@ bloodhound-start:
     # Kali's `bloodhound-start` waits for the API in a busy curl loop and then
     # runs xdg-open -- both of which hang in this headless, rootful container (no
     # browser, no display). So instead of the blocking wrapper we start the
-    # systemd units directly and NON-BLOCKING (`--no-block`), and you open the UI
-    # in your HOST browser. The stack comes up in the background. If this errors
-    # with "System has not been booted with systemd as init system", the
-    # container predates init=true: `ujust rebuild-kali`, then `ujust
-    # setup-bloodhound` again. Run setup first if you have not.
-    distrobox enter --root {{ kali_box }} -- sudo bash -lc 'for svc in postgresql neo4j bloodhound; do systemctl start --no-block "$svc" || true; done'
+    # stack directly and NON-BLOCKING, and you open the UI in your HOST browser.
+    # If this errors with "System has not been booted with systemd as init
+    # system", the container predates init=true: `ujust rebuild-kali`, then
+    # `ujust setup-bloodhound` again. Run setup first if you have not.
+    #
+    # NEO4J IS NOT A SYSTEMD UNIT HERE: Kali's bloodhound package starts/stops
+    # neo4j directly via its own `neo4j` binary (LSB-style start/status), not
+    # via a neo4j.service unit -- confirmed by bloodhound-setup's own output
+    # ("Starting Neo4j... Started neo4j (pid:...)") and by bloodhound-stop
+    # checking neo4j's status SEPARATELY from bloodhound.service's systemd
+    # status. So we do the same: only postgresql and bloodhound (both real
+    # units) go through systemctl; neo4j is started via its own binary if not
+    # already running. This also means any warning like "Unit neo4j.service
+    # not found" (e.g. from bloodhound.service's own unit file referencing it)
+    # is EXPECTED and safe to ignore -- it is not a sign neo4j failed to start.
+    distrobox enter --root {{ kali_box }} -- sudo bash -lc 'systemctl start --no-block postgresql || true; neo4j_bin="$(command -v neo4j || echo /usr/share/neo4j/bin/neo4j)"; "$neo4j_bin" status >/dev/null 2>&1 || "$neo4j_bin" start; systemctl start --no-block bloodhound || true'
     echo ""
     echo "BloodHound is starting in the background (give it ~30s)."
     echo "Open the UI in your HOST browser:  http://localhost:8080"
     echo "Check status:  distrobox enter --root {{ kali_box }} -- sudo systemctl status bloodhound"
+    echo "Check neo4j directly (not systemd-managed here):  distrobox enter --root {{ kali_box }} -- sudo neo4j status"
+    echo ""
+    echo "NOTE: a warning mentioning 'neo4j.service' (e.g. 'Unit neo4j.service"
+    echo "not found') is EXPECTED and safe to ignore. Kali's bloodhound package"
+    echo "manages neo4j directly via its own binary, not as a systemd unit --"
+    echo "the line above already started/verified it that way, so the database"
+    echo "is up regardless of that message."
 
 # Surface the container's impacket-* scripts to the host shell (distrobox export)
 [group('Kali')]
