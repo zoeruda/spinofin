@@ -87,26 +87,39 @@ setup-bloodhound:
     # so systemd-managed services work. bloodhound is installed on demand here
     # rather than baked into the .ini because it pulls neo4j + a JVM and not
     # every user wants that weight. Idempotent: safe to re-run.
-    distrobox enter --root {{ kali_box }} -- sudo bash -lc 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y bloodhound && bloodhound-setup'
+    #
+    # HEADLESS FIX: bloodhound-setup ends by trying to xdg-open the neo4j page in
+    # a browser, which has no display/browser in this container and makes the
+    # command fail. We shim the browser launchers to no-ops (PATH + BROWSER) so
+    # setup completes cleanly; you open the neo4j page in your HOST browser
+    # instead (instructions printed below). Real (non-browser) failures still
+    # surface, since we only neutralize the browser step.
+    distrobox enter --root {{ kali_box }} -- sudo bash -lc 'set -e; apt-get update; DEBIAN_FRONTEND=noninteractive apt-get install -y bloodhound; shim=/tmp/spinofin-nobrowser; mkdir -p "$shim"; for b in xdg-open sensible-browser x-www-browser www-browser gnome-www-browser firefox; do printf "#!/bin/sh\nexit 0\n" > "$shim/$b"; chmod +x "$shim/$b"; done; PATH="$shim:$PATH" BROWSER=true bloodhound-setup'
     echo ""
-    echo "Done. Start BloodHound with:  ujust bloodhound-start"
-    echo "Then open the BloodHound UI (default http://localhost:8080) and change"
-    echo "the default neo4j password as bloodhound-setup instructed."
+    echo "Done -- BloodHound databases are provisioned. Now, from your HOST browser:"
+    echo "  1. Open http://localhost:7474 (neo4j), log in neo4j / neo4j, set a new password."
+    echo "  2. Put that password into the container config:"
+    echo "       distrobox enter --root {{ kali_box }} -- sudo nano /etc/bhapi/bhapi.json"
+    echo "  3. Start BloodHound:  ujust bloodhound-start   (UI at http://localhost:8080)"
 
 # Start BloodHound CE -- the single 'get going' command, like Kali's bloodhound-start
 [group('Kali')]
 bloodhound-start:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Kali's `bloodhound-start` helper brings up the BloodHound CE stack via its
-    # systemd unit (bloodhound.service). That requires systemd as PID 1 -- which
-    # is why the box is now an init container (init=true in the .ini). If this
-    # errors with "System has not been booted with systemd as init system",
-    # the container predates that change: rebuild it with `ujust rebuild-kali`,
-    # then `ujust setup-bloodhound` again. Still validate on a real boot -- init
-    # containers don't run every systemd service flawlessly. Run setup first if
-    # you have not:  ujust setup-bloodhound
-    distrobox enter --root {{ kali_box }} -- sudo bloodhound-start
+    # Kali's `bloodhound-start` waits for the API in a busy curl loop and then
+    # runs xdg-open -- both of which hang in this headless, rootful container (no
+    # browser, no display). So instead of the blocking wrapper we start the
+    # systemd units directly and NON-BLOCKING (`--no-block`), and you open the UI
+    # in your HOST browser. The stack comes up in the background. If this errors
+    # with "System has not been booted with systemd as init system", the
+    # container predates init=true: `ujust rebuild-kali`, then `ujust
+    # setup-bloodhound` again. Run setup first if you have not.
+    distrobox enter --root {{ kali_box }} -- sudo bash -lc 'for svc in postgresql neo4j bloodhound; do systemctl start --no-block "$svc" || true; done'
+    echo ""
+    echo "BloodHound is starting in the background (give it ~30s)."
+    echo "Open the UI in your HOST browser:  http://localhost:8080"
+    echo "Check status:  distrobox enter --root {{ kali_box }} -- sudo systemctl status bloodhound"
 
 # Surface the container's impacket-* scripts to the host shell (distrobox export)
 [group('Kali')]
