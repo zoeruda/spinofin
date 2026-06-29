@@ -35,8 +35,10 @@ main README:
   sockets / low ports, e.g. some impacket tools -- see the README's
   impacket privilege caveat).
 
-Both error harmlessly (via distrobox's own message) if the container hasn't
-been created yet -- run `ujust setup-kali` first.
+Both error harmlessly toward `ujust setup-kali` if the container hasn't been
+created yet, rather than letting `distrobox enter` fall through to its
+default behavior: offering to create a new container under that same name
+using the *host's* default image (Fedora) instead of Kali.
 
 ## Layout
 
