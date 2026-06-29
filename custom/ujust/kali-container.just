@@ -35,6 +35,17 @@ setup-kali:
     echo "First run is heavy: pulling kali-rolling + installing tools..."
     distrobox assemble create --file "{{ kali_ini }}"
     echo ""
+    echo "Configuring the container's sudo prompt to show its hostname..."
+    # Disambiguates host vs. container sudo prompts (e.g. "[sudo] password for
+    # zoe (on spinofin-kali):" inside the box vs. "...(on <real-hostname>):" on
+    # the host -- see custom/sudo-prompt/README.md for the host side). Written
+    # as a NEW file under /etc/sudoers.d/ -- never touches the main sudoers
+    # file, so this cannot lock out sudo even if something here were wrong;
+    # at worst sudo just skips this one file with a warning. Mode 0440 +
+    # root:root is REQUIRED for sudo to honor a sudoers.d file at all; no dot
+    # in the filename either (sudo ignores dotted filenames in this directory).
+    # Re-running `setup-kali` simply overwrites this file -- idempotent.
+    distrobox enter --root {{ kali_box }} -- sudo bash -c 'printf "%s\n" "Defaults passprompt=\"[sudo] password for %p (on %h): \"" > /etc/sudoers.d/spinofin-sudo-prompt && chown root:root /etc/sudoers.d/spinofin-sudo-prompt && chmod 0440 /etc/sudoers.d/spinofin-sudo-prompt'
     echo "Container ready. Next:"
     echo "  ujust setup-metasploit   # initialize the Metasploit database"
     echo "  ujust enter-kali         # drop into the container"
