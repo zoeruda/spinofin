@@ -34,6 +34,15 @@ bloodyAD
 # does not apply here. Verified against the sdist/PyPI 2026-06.
 soaphound
 
+# BloodHound's Active Directory ingestor for BHCE (NOT legacy bloodhound-python
+# -- only compatible with BloodHound CE). The CLI is `bloodhound-ce-python`;
+# the PyPI package is `bloodhound-ce`, which provides that entry point. Same
+# author/lineage as impacket, same shape as soaphound above: a py3-none-any
+# wheel whose deps (dnspython, impacket, ldap3, pyasn1, pycryptodome) are all
+# pure-Python or ship prebuilt manylinux wheels -- no gssapi, no build headers.
+# Verified against the sdist/PyPI 2026-06.
+bloodhound-ce
+
 # Web Application Firewall fingerprinting toolkit. Pure-Python (py3-none-any),
 # deps are requests/requests[socks] only -> clean host install. Not in
 # homebrew-core, hence pipx rather than brew.
