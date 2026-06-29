@@ -118,6 +118,7 @@ through Homebrew or Flatpak instead:
   - `kalisudo <cmd>` — same, but as root in the container (raw sockets / low ports — the same cases as the impacket privilege caveat above; this is the shorthand for `distrobox enter --root spinofin-kali -- sudo <cmd>`).
   - **Existence guard:** before calling `distrobox enter`, both check the container actually exists. Plain `distrobox enter` on a non-existent container name does **not** fail cleanly — by default it interactively offers to create a new container under that name using the *host's* default image (Fedora) instead, which is exactly the wrong thing here. If `spinofin-kali` hasn't been created yet, you get a clear message pointing at `ujust setup-kali` instead of that prompt.
   - Targets `bash` (Bluefin's default interactive shell) via Fedora's `/etc/bashrc` → `/etc/profile.d` convention, which covers both login and ordinary new-terminal sessions. zsh users will need to `source /etc/profile.d/spinofin-kali-aliases.sh` from their own `~/.zshrc`.
+- **Sudo prompt disambiguation** (baked into the image + set up by `ujust setup-kali`): a sudo password prompt is ambiguous about whether it wants the host's or the container's password by default. Declared in [`custom/sudo-prompt/`](custom/sudo-prompt/README.md) (host side, shipped the same way as `custom/aliases/`) and in `setup-kali` itself (container side). Both set `Defaults passprompt="[sudo] password for %p (on %h): "` — the same line, resolving differently because `%h` (sudo's hostname escape) differs by context: the container's hostname is explicitly pinned to `spinofin-kali` via `hostname=` in the `.ini`, so you always see e.g. `[sudo] password for zoe (on spinofin-kali):` inside the box vs. `...(on <real-hostname>):` on the host. This only ever *adds* a file under `/etc/sudoers.d/` — it never edits the main `/etc/sudoers`, so a mistake here degrades gracefully (sudo just skips that one file) rather than locking out sudo entirely.
 - **GUI Apps (Flatpak)**: preinstalled on first boot from Flathub (all IDs validated by `validate-flatpaks.yml`):
   - `com.github.tchx84.Flatseal` — Flatpak permission manager. The original preinstall sanity-check (the Bluefin base does not already ship it), and useful for managing the permissions of the sandboxed security GUIs below.
   - `org.wireshark.Wireshark` — protocol analyzer. **Note:** the Flathub build is sandboxed and **cannot do live capture** — it opens/analyzes existing `.pcap`/`.pcapng` files. For promiscuous-mode / live capture, the move is to install Wireshark **inside the Kali container** via apt and run it as root from there (`distrobox enter --root spinofin-kali -- sudo wireshark`); the rootful container has the `CAP_NET_RAW` capture needs. Host-side `dumpcap` privileges remain the roadmap's known-hard, deferred item.
@@ -134,7 +135,7 @@ through Homebrew or Flatpak instead:
 - No-layering policy as mentioned above
 - Custom Branding: Spinosaurus sail logo and spinofin wordmark to replace Bluefin's branding
 
-_Last updated: 2026-06-28_
+_Last updated: 2026-06-29_
 
 > Replace the placeholders above with your actual customizations whenever you add or remove packages, apps, or configuration. This section is what tells users how your image differs from the base.
 
@@ -299,6 +300,7 @@ Build-Time Layering" above), so packages are not added via `dnf5` in
 - Add Flatpaks in `custom/flatpaks/` ([guide](custom/flatpaks/README.md))
 - Add ujust commands in `custom/ujust/` ([guide](custom/ujust/README.md))
 - Add baked-in shell aliases/functions in `custom/aliases/` ([guide](custom/aliases/README.md)) — a plain `/etc/profile.d/*.sh` file overlay, the same file-overlay mechanism `custom/branding/` uses, not a package install. spinofin ships `kali`/`kalisudo` this way (see below) as the working example.
+- Add baked-in sudo-prompt or other `/etc/sudoers.d/` customizations in `custom/sudo-prompt/` ([guide](custom/sudo-prompt/README.md)) — same file-overlay mechanism; only ever *adds* a new file, never edits the main `/etc/sudoers`.
 
 ### 6. Development Workflow
 

@@ -132,6 +132,14 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/tmp \
     /ctx/build/17-aliases.sh
 
+# Host sudo prompt disambiguation (host vs. Kali container) -- a single
+# /etc/sudoers.d file overlay, no setup step required. See
+# custom/sudo-prompt/README.md.
+RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
+    --mount=type=tmpfs,dst=/boot \
+    --mount=type=tmpfs,dst=/tmp \
+    /ctx/build/18-sudo-prompt.sh
+
 ### CLEANUP
 ## Use Bluefin's clean-stage.sh to remove build artifacts before linting.
 ## /run is deliberately not mounted as tmpfs here: clean-stage.sh must remove
