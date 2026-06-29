@@ -102,6 +102,13 @@ brew "exploitdb"     # local Exploit-DB archive + `searchsploit` lookup
 brew "proxychains-ng" # route tool traffic through a SOCKS/HTTP proxy chain
                       # (provides the `proxychains4` binary)
 
+# --- Networking utilities (Phase 3) ----------------------------------------
+brew "netcat"        # the classic network swiss-army knife (banner grabbing,
+                     # listeners, simple pivoting, file transfer)
+brew "rlwrap"        # readline wrapper -- adds history/line-editing to tools
+                     # that lack their own (e.g. raw netcat shells, msfconsole
+                     # alternatives, some impacket interactive prompts)
+
 # --- Python tooling bootstrap (Phase 3) ------------------------------------
 # pipx is the installer for the host-side Python bucket (custom/pipx/*.pipx,
 # installed via `ujust install-pipx-tools`). Installing it here means

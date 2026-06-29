@@ -131,7 +131,24 @@ jobs:
           base-name: ${{ env.IMAGE_NAME }}
           stream-name: ${{ env.DEFAULT_TAG }}
           version-label: ${{ steps.version.outputs.version }}
-          event-name: ${{ github.event_name }}
+          # ROOT CAUSE of the image publishing as `stable-daily` instead of the
+          # docs' `stable`: this action's own script treats any "stable" stream
+          # as a nightly-buffer stream by design -- it only ever emits the
+          # literal `stable` tag when event-name is `schedule` AND today is
+          # Tuesday, or when it is `workflow_dispatch`/`workflow_call` (see
+          # generate_tags.sh in projectbluefin/actions). Every other trigger --
+          # including OUR every-push-to-main build, and our daily non-Tuesday
+          # cron -- only gets `stable-daily`. That gradual promotion cadence
+          # fits Bluefin's own continuous-build model, but spinofin has no
+          # separate staged-promotion step: every push to main is already
+          # curated via PR review, so there is nothing to "buffer" before
+          # promoting. We deliberately tell the action every non-PR trigger is
+          # promotion-worthy (workflow_dispatch semantics) so it always emits
+          # `stable`, matching what the README documents. PR semantics are
+          # preserved untouched in case PR builds are ever re-enabled (see the
+          # comment at the top of this file), so PR-only tags are never
+          # accidentally promoted to `stable`.
+          event-name: ${{ github.event_name == 'pull_request' && 'pull_request' || 'workflow_dispatch' }}
           pr-number: ${{ github.event.number }}
 
       - name: Save DNF cache
