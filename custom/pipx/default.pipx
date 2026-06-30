@@ -79,11 +79,12 @@ sslyze
 ldapdomaindump
 
 # --- Deliberately NOT host-side (documented per-tool decisions) -------------
-# powerview.py: needs the gssapi C extension, which requires libkrb5-dev
-#   headers at build time. gssapi ships no Linux manylinux wheels and always
-#   builds from source -- so host-side brew pipx cannot install it (no headers,
-#   no-layering policy). Routed to the Kali container instead, where libkrb5-dev
-#   and python3-pipx are baked into additional_packages for exactly this purpose.
+# powerview.py: needs the gssapi C extension, which requires BOTH libkrb5-dev
+#   (krb5 headers) and python3-dev (Python.h) at build time. gssapi ships no
+#   Linux manylinux wheels and always builds from source -- so host-side brew
+#   pipx cannot install it (no headers, no-layering policy). Routed to the
+#   Kali container instead, where libkrb5-dev, python3-dev, and pipx are all
+#   baked into additional_packages for exactly this purpose.
 #   Install it with: ujust setup-powerview
 #
 # wfuzz: only a stale Python-2 third-party brew tap exists and upstream is
