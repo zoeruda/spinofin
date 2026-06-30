@@ -64,12 +64,18 @@ enter-kali:
         echo "Run 'ujust setup-kali' first to provision it." >&2
         exit 1
     fi
-    # Hand off to an interactive shell. Leaving it via Ctrl+C, Ctrl+D, or typing
-    # `exit` (which inherits your LAST command's exit code -- possibly nonzero,
-    # e.g. if a scan you ran reported "target down") are all normal, intentional
-    # ways out. None of them mean THIS recipe failed, so we deliberately discard
-    # whatever exit code the interactive session ends with.
-    distrobox enter --root {{ kali_box }} || true
+    # Hand off to an interactive shell. --no-workdir forces entry at the
+    # container's $HOME -- without it, distrobox preserves the host's cwd at
+    # invocation time (mapped under /run/host/ in a rootful container), which
+    # for a `ujust` recipe is wherever ujust itself was invoked from (e.g.
+    # /run/host/usr/share/ublue-os/just) rather than anywhere useful inside
+    # the box.
+    # Leaving via Ctrl+C, Ctrl+D, or typing `exit` (which inherits your LAST
+    # command's exit code -- possibly nonzero, e.g. if a scan you ran
+    # reported "target down") are all normal, intentional ways out. None of
+    # them mean THIS recipe failed, so we deliberately discard whatever exit
+    # code the interactive session ends with.
+    distrobox enter --root --no-workdir {{ kali_box }} || true
 
 # Rebuild the Kali toolbox container from scratch (replaces the existing one)
 [group('Kali')]
@@ -245,12 +251,21 @@ setup-powerview:
     set -euo pipefail
     echo "Installing powerview.py inside '{{ kali_box }}' via container-local pipx..."
     # powerview.py's gssapi dependency has no Linux manylinux wheel and always
-    # builds from source, requiring libkrb5-dev headers. Those are absent on
-    # Bluefin and forbidden by the no-layering policy, so host-side pipx can
-    # never install this. Both libkrb5-dev and python3-pipx are baked into the
-    # container's additional_packages specifically to make this work.
+    # builds from source, requiring BOTH the krb5 headers (libkrb5-dev) and
+    # the Python.h headers (python3-dev) to compile its C extension -- missing
+    # either one fails the build (python3-dev's absence used to surface as
+    # "Python.h: No such file or directory" even with libkrb5-dev present).
+    # Those are absent on Bluefin and forbidden by the no-layering policy, so
+    # host-side pipx can never install this. libkrb5-dev, python3-dev, and
+    # pipx are all baked into the container's additional_packages specifically
+    # to make this work.
     # Idempotent: pipx install --force handles re-runs cleanly.
-    distrobox enter --root {{ kali_box }} -- sudo bash -lc \
+    # Deliberately NOT run as root (unlike setup-metasploit, which needs sudo
+    # because msfdb init specifically requires it). pipx is a per-user tool --
+    # running this under sudo installs into /root/.local/bin instead of the
+    # container user's ~/.local/bin, which is the directory already on PATH
+    # and the one `kali powerview.py ...` / `ujust enter-kali` expect.
+    distrobox enter --root {{ kali_box }} -- bash -lc \
         "pipx install --force 'git+https://github.com/aniqfakhrul/powerview.py'"
     echo ""
     echo "Done. Run powerview.py from inside the container:"
