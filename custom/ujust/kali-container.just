@@ -281,7 +281,7 @@ link-wordlists:
     echo "  hashcat -m 0 -a 0 hashes.txt ~/wordlists/rockyou.txt"
     echo "  john --wordlist=\$HOME/wordlists/rockyou.txt hashes.txt"
 
-# Install powerview.py inside the container via pipx (re-runnable)
+# Install powerview (aniqfakhrul/powerview.py) inside the container via pipx (re-runnable)
 [group('Kali')]
 setup-powerview:
     #!/usr/bin/env bash
@@ -291,8 +291,8 @@ setup-powerview:
         echo "Run 'ujust setup-kali' first to provision it." >&2
         exit 1
     fi
-    echo "Installing powerview.py inside '{{ kali_box }}' via container-local pipx..."
-    # powerview.py's gssapi dependency has no Linux manylinux wheel and always
+    echo "Installing powerview inside '{{ kali_box }}' via container-local pipx..."
+    # powerview's gssapi dependency has no Linux manylinux wheel and always
     # builds from source, requiring BOTH the krb5 headers (libkrb5-dev) and
     # the Python.h headers (python3-dev) to compile its C extension -- missing
     # either one fails the build (python3-dev's absence used to surface as
@@ -301,18 +301,50 @@ setup-powerview:
     # host-side pipx can never install this. libkrb5-dev, python3-dev, and
     # pipx are all baked into the container's additional_packages specifically
     # to make this work.
-    # Idempotent: pipx install --force handles re-runs cleanly.
-    # Deliberately NOT run as root (unlike setup-metasploit, which needs sudo
-    # because msfdb init specifically requires it). pipx is a per-user tool --
-    # running this under sudo installs into /root/.local/bin instead of the
-    # container user's ~/.local/bin, which is the directory already on PATH
-    # and the one `kali powerview.py ...` / `ujust enter-kali` expect.
-    distrobox enter --root {{ kali_box }} -- bash -lc \
-        "pipx install --force 'git+https://github.com/aniqfakhrul/powerview.py'"
+    #
+    # NOTE ON THE COMMAND NAME: the package is named powerview.py (the repo
+    # name), but the installed console script is just `powerview` -- per the
+    # project's own install docs. `powerview.py` is not a valid command.
+    #
+    # ISOLATED PIPX_HOME/PIPX_BIN_DIR: distrobox shares $HOME between host and
+    # this rootful container by default, which means the default pipx target
+    # (~/.local/bin) is the SAME physical directory as the host's own brew-
+    # managed pipx. That collides two independent pipx installs (host and
+    # container) into one shared bin directory. We redirect pipx's venv store
+    # AND its bin dir to /opt/spinofin/pipx, which lives in the container's
+    # OWN root filesystem -- NOT under $HOME, so it is invisible to the host
+    # entirely (distrobox does not share /opt, only $HOME). This keeps Kali's
+    # pipx tools fully separate from host pipx tools without needing a second,
+    # separate container $HOME (which would also break the OTHER recipes that
+    # rely on the shared $HOME working as-is: export-impacket, link-wordlists,
+    # and the msfconsole export in setup-kali).
+    #
+    # /usr/local/bin SYMLINK: a non-interactive `kali powerview ...` call
+    # (custom/aliases/system_files/etc/profile.d/spinofin-kali-aliases.sh)
+    # does not source ~/.bashrc, so a plain PATH addition there is invisible
+    # to it -- this is why `kali powerview` previously failed with "not
+    # found" even though it worked from an interactive `ujust enter-kali`
+    # shell. /usr/local/bin is on the system's default PATH unconditionally,
+    # for every shell invocation style (interactive, login, or not), so a
+    # single symlink there makes `powerview` reachable everywhere INSIDE the
+    # container without depending on any shell rc file. Since the container's
+    # /usr/local/bin is part of its own private root filesystem (not shared
+    # with the host), this is still "only inside Kali" -- the host's own
+    # /usr/local/bin is an entirely separate, untouched directory.
+    # Idempotent: pipx install --force and ln -sf handle re-runs cleanly.
+    distrobox enter --root {{ kali_box }} -- bash -lc '
+        set -euo pipefail
+        export PIPX_HOME="/opt/spinofin/pipx"
+        export PIPX_BIN_DIR="/opt/spinofin/pipx/bin"
+        sudo mkdir -p "$PIPX_HOME" "$PIPX_BIN_DIR"
+        sudo chown -R "$(id -u):$(id -g)" "$PIPX_HOME"
+        pipx install --force "git+https://github.com/aniqfakhrul/powerview.py"
+        sudo ln -sf "$PIPX_BIN_DIR/powerview" /usr/local/bin/powerview
+    '
     echo ""
-    echo "Done. Run powerview.py from inside the container:"
-    echo "  ujust enter-kali        # then: powerview.py --help"
-    echo "  kali powerview.py --help  # using the kali alias"
+    echo "Done. powerview is now on PATH everywhere inside the container:"
+    echo "  ujust enter-kali   # then: powerview --help"
+    echo "  kali powerview --help   # using the kali alias, from your host shell"
 
 # Remove the Kali toolbox container entirely
 [group('Kali')]
