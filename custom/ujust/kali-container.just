@@ -46,9 +46,14 @@ setup-kali:
     # in the filename either (sudo ignores dotted filenames in this directory).
     # Re-running `setup-kali` simply overwrites this file -- idempotent.
     distrobox enter --root {{ kali_box }} -- sudo bash -c 'printf "%s\n" "Defaults passprompt=\"[sudo] password for %p (on %h): \"" > /etc/sudoers.d/spinofin-sudo-prompt && chown root:root /etc/sudoers.d/spinofin-sudo-prompt && chmod 0440 /etc/sudoers.d/spinofin-sudo-prompt'
-    echo "Container ready. Next:"
+    echo "Container ready. Suggested next steps:"
     echo "  ujust setup-metasploit   # initialize the Metasploit database"
-    echo "  ujust enter-kali         # drop into the container"
+    echo "  ujust setup-bloodhound   # install + provision BloodHound CE"
+    echo "  ujust setup-powerview    # install powerview.py via container-local pipx"
+    echo "  ujust export-impacket    # surface impacket-* scripts to your host shell"
+    echo "  ujust link-wordlists     # stage real wordlist files for host-native tools"
+    echo "  ujust enter-kali         # drop into the container directly"
+    echo "Run 'ujust --list' to see all available Kali recipes."
 
 # Enter an interactive shell in the Kali toolbox container
 [group('Kali')]
@@ -91,6 +96,11 @@ rebuild-kali:
 setup-metasploit:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
     echo "Starting PostgreSQL and initializing the Metasploit database..."
     # Runs inside the rootful Kali container. Idempotent: safe to re-run.
     # - postgresql is started via the 'service' wrapper (still works now that
@@ -111,6 +121,11 @@ setup-metasploit:
 setup-bloodhound:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
     echo "Installing BloodHound CE and provisioning its databases..."
     # Mirrors `setup-metasploit`. Kali's `bloodhound` package ships the
     # bloodhound-setup helper, which starts PostgreSQL + neo4j and creates the
@@ -138,6 +153,18 @@ setup-bloodhound:
 bloodhound-start:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
+    # Without the guard above, running this against a missing/never-created
+    # container falls through to distrobox's own auto-create prompt, which
+    # builds a generic, non-manifest container with no init=true -- that box's
+    # broken pty/systemd plumbing is what previously surfaced downstream as an
+    # opaque "OCI runtime error: ptsname: Inappropriate ioctl for device"
+    # (exit 255) instead of a clear "run setup-kali first" message.
+    #
     # Kali's `bloodhound-start` waits for the API in a busy curl loop and then
     # runs xdg-open -- both of which hang in this headless, rootful container (no
     # browser, no display). So instead of the blocking wrapper we bring the
@@ -198,6 +225,11 @@ bloodhound-start:
 export-impacket:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
     # impacket lives ONLY in the container (impacket-scripts in the .ini). This
     # exports every /usr/bin/impacket-* wrapper to the host as a distrobox
     # shortcut in ~/.local/bin, so `impacket-secretsdump` (etc.) run from the
@@ -224,6 +256,11 @@ export-impacket:
 link-wordlists:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
     # Make the container's Kali wordlists usable by HOST-native tools (john,
     # hashcat, ffuf, ...). Two gotchas: (1) distrobox shares only $HOME -- not
     # the container's /usr -- so files must land under $HOME; and (2)
@@ -244,13 +281,18 @@ link-wordlists:
     echo "  hashcat -m 0 -a 0 hashes.txt ~/wordlists/rockyou.txt"
     echo "  john --wordlist=\$HOME/wordlists/rockyou.txt hashes.txt"
 
-# Install powerview.py inside the container via pipx (re-runnable)
+# Install powerview (aniqfakhrul/powerview.py) inside the container via pipx (re-runnable)
 [group('Kali')]
 setup-powerview:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "Installing powerview.py inside '{{ kali_box }}' via container-local pipx..."
-    # powerview.py's gssapi dependency has no Linux manylinux wheel and always
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
+    echo "Installing powerview inside '{{ kali_box }}' via container-local pipx..."
+    # powerview's gssapi dependency has no Linux manylinux wheel and always
     # builds from source, requiring BOTH the krb5 headers (libkrb5-dev) and
     # the Python.h headers (python3-dev) to compile its C extension -- missing
     # either one fails the build (python3-dev's absence used to surface as
@@ -259,18 +301,50 @@ setup-powerview:
     # host-side pipx can never install this. libkrb5-dev, python3-dev, and
     # pipx are all baked into the container's additional_packages specifically
     # to make this work.
-    # Idempotent: pipx install --force handles re-runs cleanly.
-    # Deliberately NOT run as root (unlike setup-metasploit, which needs sudo
-    # because msfdb init specifically requires it). pipx is a per-user tool --
-    # running this under sudo installs into /root/.local/bin instead of the
-    # container user's ~/.local/bin, which is the directory already on PATH
-    # and the one `kali powerview.py ...` / `ujust enter-kali` expect.
-    distrobox enter --root {{ kali_box }} -- bash -lc \
-        "pipx install --force 'git+https://github.com/aniqfakhrul/powerview.py'"
+    #
+    # NOTE ON THE COMMAND NAME: the package is named powerview.py (the repo
+    # name), but the installed console script is just `powerview` -- per the
+    # project's own install docs. `powerview.py` is not a valid command.
+    #
+    # ISOLATED PIPX_HOME/PIPX_BIN_DIR: distrobox shares $HOME between host and
+    # this rootful container by default, which means the default pipx target
+    # (~/.local/bin) is the SAME physical directory as the host's own brew-
+    # managed pipx. That collides two independent pipx installs (host and
+    # container) into one shared bin directory. We redirect pipx's venv store
+    # AND its bin dir to /opt/spinofin/pipx, which lives in the container's
+    # OWN root filesystem -- NOT under $HOME, so it is invisible to the host
+    # entirely (distrobox does not share /opt, only $HOME). This keeps Kali's
+    # pipx tools fully separate from host pipx tools without needing a second,
+    # separate container $HOME (which would also break the OTHER recipes that
+    # rely on the shared $HOME working as-is: export-impacket, link-wordlists,
+    # and the msfconsole export in setup-kali).
+    #
+    # /usr/local/bin SYMLINK: a non-interactive `kali powerview ...` call
+    # (custom/aliases/system_files/etc/profile.d/spinofin-kali-aliases.sh)
+    # does not source ~/.bashrc, so a plain PATH addition there is invisible
+    # to it -- this is why `kali powerview` previously failed with "not
+    # found" even though it worked from an interactive `ujust enter-kali`
+    # shell. /usr/local/bin is on the system's default PATH unconditionally,
+    # for every shell invocation style (interactive, login, or not), so a
+    # single symlink there makes `powerview` reachable everywhere INSIDE the
+    # container without depending on any shell rc file. Since the container's
+    # /usr/local/bin is part of its own private root filesystem (not shared
+    # with the host), this is still "only inside Kali" -- the host's own
+    # /usr/local/bin is an entirely separate, untouched directory.
+    # Idempotent: pipx install --force and ln -sf handle re-runs cleanly.
+    distrobox enter --root {{ kali_box }} -- bash -lc '
+        set -euo pipefail
+        export PIPX_HOME="/opt/spinofin/pipx"
+        export PIPX_BIN_DIR="/opt/spinofin/pipx/bin"
+        sudo mkdir -p "$PIPX_HOME" "$PIPX_BIN_DIR"
+        sudo chown -R "$(id -u):$(id -g)" "$PIPX_HOME"
+        pipx install --force "git+https://github.com/aniqfakhrul/powerview.py"
+        sudo ln -sf "$PIPX_BIN_DIR/powerview" /usr/local/bin/powerview
+    '
     echo ""
-    echo "Done. Run powerview.py from inside the container:"
-    echo "  ujust enter-kali        # then: powerview.py --help"
-    echo "  kali powerview.py --help  # using the kali alias"
+    echo "Done. powerview is now on PATH everywhere inside the container:"
+    echo "  ujust enter-kali   # then: powerview --help"
+    echo "  kali powerview --help   # using the kali alias, from your host shell"
 
 # Remove the Kali toolbox container entirely
 [group('Kali')]
