@@ -541,7 +541,7 @@ These security features are disabled by default to allow immediate testing. When
 
 ## Troubleshooting
 
-### Flatpaks not preinstalled after bootc switch (fixes #49)
+### Flatpaks not preinstalled after bootc switch
 
 Flatpaks are installed on first boot via `flatpak-preinstall.service`, not during `bootc switch`. Ensure:
 
@@ -549,10 +549,6 @@ Flatpaks are installed on first boot via `flatpak-preinstall.service`, not durin
 - `flatpak-preinstall.service` completes (`systemctl status flatpak-preinstall.service`)
 - Wait until the service finishes before checking for flatpaks
 
-### flatpak-preinstall errors about adw-gtk3 runtimes (fixes #30)
-
-The `adw-gtk3-dark` runtime is not available on Flathub. These warnings are cosmetic and do not prevent other flatpaks from installing. To suppress, remove `adw-gtk3-dark` from your flatpak list in `custom/flatpaks/`.
-
-### Homebrew not installed after bootc switch (fixes #44)
+### Homebrew not installed after bootc switch
 
 Homebrew is installed at build time into the image. If you don't see `brew`, verify your Containerfile includes the Brew integration. Check `custom/brew/README.md` for setup instructions.
