@@ -46,9 +46,14 @@ setup-kali:
     # in the filename either (sudo ignores dotted filenames in this directory).
     # Re-running `setup-kali` simply overwrites this file -- idempotent.
     distrobox enter --root {{ kali_box }} -- sudo bash -c 'printf "%s\n" "Defaults passprompt=\"[sudo] password for %p (on %h): \"" > /etc/sudoers.d/spinofin-sudo-prompt && chown root:root /etc/sudoers.d/spinofin-sudo-prompt && chmod 0440 /etc/sudoers.d/spinofin-sudo-prompt'
-    echo "Container ready. Next:"
+    echo "Container ready. Suggested next steps:"
     echo "  ujust setup-metasploit   # initialize the Metasploit database"
-    echo "  ujust enter-kali         # drop into the container"
+    echo "  ujust setup-bloodhound   # install + provision BloodHound CE"
+    echo "  ujust setup-powerview    # install powerview.py via container-local pipx"
+    echo "  ujust export-impacket    # surface impacket-* scripts to your host shell"
+    echo "  ujust link-wordlists     # stage real wordlist files for host-native tools"
+    echo "  ujust enter-kali         # drop into the container directly"
+    echo "Run 'ujust --list' to see all available Kali recipes."
 
 # Enter an interactive shell in the Kali toolbox container
 [group('Kali')]
@@ -91,6 +96,11 @@ rebuild-kali:
 setup-metasploit:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
     echo "Starting PostgreSQL and initializing the Metasploit database..."
     # Runs inside the rootful Kali container. Idempotent: safe to re-run.
     # - postgresql is started via the 'service' wrapper (still works now that
@@ -111,6 +121,11 @@ setup-metasploit:
 setup-bloodhound:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
     echo "Installing BloodHound CE and provisioning its databases..."
     # Mirrors `setup-metasploit`. Kali's `bloodhound` package ships the
     # bloodhound-setup helper, which starts PostgreSQL + neo4j and creates the
@@ -138,6 +153,18 @@ setup-bloodhound:
 bloodhound-start:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
+    # Without the guard above, running this against a missing/never-created
+    # container falls through to distrobox's own auto-create prompt, which
+    # builds a generic, non-manifest container with no init=true -- that box's
+    # broken pty/systemd plumbing is what previously surfaced downstream as an
+    # opaque "OCI runtime error: ptsname: Inappropriate ioctl for device"
+    # (exit 255) instead of a clear "run setup-kali first" message.
+    #
     # Kali's `bloodhound-start` waits for the API in a busy curl loop and then
     # runs xdg-open -- both of which hang in this headless, rootful container (no
     # browser, no display). So instead of the blocking wrapper we bring the
@@ -198,6 +225,11 @@ bloodhound-start:
 export-impacket:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
     # impacket lives ONLY in the container (impacket-scripts in the .ini). This
     # exports every /usr/bin/impacket-* wrapper to the host as a distrobox
     # shortcut in ~/.local/bin, so `impacket-secretsdump` (etc.) run from the
@@ -224,6 +256,11 @@ export-impacket:
 link-wordlists:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
     # Make the container's Kali wordlists usable by HOST-native tools (john,
     # hashcat, ffuf, ...). Two gotchas: (1) distrobox shares only $HOME -- not
     # the container's /usr -- so files must land under $HOME; and (2)
@@ -249,6 +286,11 @@ link-wordlists:
 setup-powerview:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
     echo "Installing powerview.py inside '{{ kali_box }}' via container-local pipx..."
     # powerview.py's gssapi dependency has no Linux manylinux wheel and always
     # builds from source, requiring BOTH the krb5 headers (libkrb5-dev) and
