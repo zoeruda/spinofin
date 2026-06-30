@@ -1,0 +1,116 @@
+name: Validate Kali Container Packages
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "custom/distrobox/**"
+      - "custom/ujust/kali-toolsets.just"
+      # Re-run when the validator itself changes, so a workflow edit is
+      # exercised against the committed files on its own PR.
+      - ".github/workflows/validate-kali-packages.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    container:
+      # renovate: datasource=docker depName=kalilinux/kali-rolling
+      image: "kalilinux/kali-rolling:latest"
+    timeout-minutes: 10
+    steps:
+      # The checkout action needs git; the base kali-rolling image doesn't
+      # ship it. This also primes the apt cache (apt-get update) that every
+      # `apt-cache show` below depends on -- run once, used for every check.
+      - name: Install checkout prerequisites + refresh apt cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Validate additional_packages against Kali apt repositories
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Validating additional_packages= in custom/distrobox/*.ini ..."
+          shopt -s nullglob
+
+          # These packages are installed at container-assemble time by
+          # `distrobox assemble create` (ujust setup-kali / rebuild-kali),
+          # NOT at image-build time. So we validate that every declared apt
+          # package EXISTS in the real Kali repositories -- `apt-cache show`
+          # only reads metadata, it does not install anything. This is the
+          # exact failure mode that slips past `git apply`/review: a typo'd
+          # or wrong package name (e.g. `python3-pipx` instead of the actual
+          # Kali package `pipx`) silently breaks `setup-kali`/`rebuild-kali`
+          # with an undescriptive exit 1 from `distrobox assemble create`,
+          # since nothing checks the manifest before assemble runs it.
+
+          fail=0
+          inis=(custom/distrobox/*.ini)
+          if [ ${#inis[@]} -eq 0 ]; then
+            echo "No *.ini files under custom/distrobox/ -- nothing to validate."
+          fi
+
+          for ini in "${inis[@]}"; do
+            echo "::group::$(basename "$ini")"
+            line=$(grep -E '^additional_packages=' "$ini" || true)
+            if [ -z "$line" ]; then
+              echo "  (no additional_packages= line in this file)"
+              echo "::endgroup::"
+              continue
+            fi
+            # additional_packages="pkg1 pkg2 pkg3" -- one quoted, space-separated
+            # line per the distrobox .ini format; strip the key and quotes.
+            pkgs=$(printf '%s\n' "$line" | sed -E 's/^additional_packages="(.*)"$/\1/')
+            for pkg in $pkgs; do
+              if apt-cache show "$pkg" >/dev/null 2>&1; then
+                echo "  ok    $pkg"
+              else
+                echo "  FAIL  $pkg -- no such package in the Kali apt repositories"
+                fail=1
+              fi
+            done
+            echo "::endgroup::"
+          done
+
+          echo "Validating kali-tools-* metapackages in kali-toolsets.just ..."
+          toolsets_file="custom/ujust/kali-toolsets.just"
+          if [ -f "$toolsets_file" ]; then
+            echo "::group::$(basename "$toolsets_file")"
+            # Recipes look like: install-kali-web: (install-kali-toolset "web")
+            # -- extract each quoted family arg and check kali-tools-<family>.
+            families=$(grep -oE 'install-kali-toolset "[^"]+"' "$toolsets_file" \
+              | sed -E 's/install-kali-toolset "([^"]+)"/\1/' | sort -u)
+            if [ -z "$families" ]; then
+              echo "  (no install-kali-toolset families found)"
+            fi
+            for family in $families; do
+              meta="kali-tools-${family}"
+              if apt-cache show "$meta" >/dev/null 2>&1; then
+                echo "  ok    $meta"
+              else
+                echo "  FAIL  $meta -- no such metapackage in the Kali apt repositories"
+                fail=1
+              fi
+            done
+            echo "::endgroup::"
+          else
+            echo "  (no $toolsets_file found -- skipping)"
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo ""
+            echo "Kali package validation failed -- see the FAIL lines above."
+            echo "This checks that packages EXIST in the real Kali apt repos; it"
+            echo "does not install them or run distrobox assemble. Packages are"
+            echo "installed at container-assemble time by the user, via"
+            echo "'ujust setup-kali' / 'ujust rebuild-kali' / the toolset recipes."
+            exit 1
+          fi
+          echo ""
+          echo "All additional_packages and kali-tools-* metapackages resolve."

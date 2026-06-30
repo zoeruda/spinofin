@@ -218,6 +218,7 @@ Read `.agents/skills/finpilot-maintain.md` and `.agents/skills/finpilot-ci.md`, 
   - `main` branch builds `:stable` images
 - Validates your files on pull requests so you never break a build:
   - Brewfile, Justfile, ShellCheck, Renovate config, pipx tool lists (checks each tool exists on PyPI / as a reachable git repo), and it'll even check to make sure the flatpak you add exists on FlatHub
+  - Kali container packages: every `additional_packages` entry in `custom/distrobox/*.ini` and every `kali-tools-*` metapackage referenced in `custom/ujust/kali-toolsets.just` is checked against the real Kali apt repositories (`apt-cache show`, metadata only, nothing installed) — this is what would have caught the `python3-pipx` typo before merge, instead of `ujust setup-kali` failing with an undescriptive exit 1
 - Production Grade Features
   - Container signing with keyless OIDC
   - See checklist below to enable these as they take some manual configuration
