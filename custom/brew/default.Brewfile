@@ -28,11 +28,11 @@
 # ---------------------------------------------------------------------------
 
 # --- Bootstrap sanity check (Phase 1) --------------------------------------
-# Proved the brew + ujust path end-to-end before any other tooling. Note:
-# unprivileged host nmap does CONNECT scans (-sT) fine; raw-socket SYN scans
-# (-sS) are the rootful container's job (CAP_NET_RAW). Whether nmap should
-# ALSO live in the Kali container is an open per-tool decision -- see README.
-brew "nmap"
+# Proved the brew + ujust path end-to-end before any other tooling.
+# nmap itself has since been moved to the Kali container exclusively (it needs
+# CAP_NET_RAW for raw-socket SYN scans, -sS, and OS detection, -O; the rootful
+# container provides that, an unprivileged host install can't). See
+# custom/distrobox/spinofin-kali.ini.
 
 # --- Host-side recon / web enumeration (Phase 3) ---------------------------
 # All Go/Rust, unprivileged, verified present in homebrew-core (2026-06).
@@ -74,6 +74,24 @@ brew "gitleaks"      # audit git history for hardcoded secrets
 
 # --- TLS/SSL inspection (Phase 3) ------------------------------------------
 brew "sslscan"       # enumerate supported SSL/TLS ciphers & flaws
+brew "testssl"       # comprehensive TLS/SSL server testing: ciphers, protocols,
+                     # certificate chain, HSTS, known vulns (BEAST, POODLE,
+                     # Heartbleed, etc.). Bash script wrapping OpenSSL -- no
+                     # compiled binary, just bash + openssl. Complements sslscan
+                     # (cipher enumeration) and the pipx sslyze (structured API
+                     # output); testssl shines for human-readable engagement
+                     # reports. Confirmed in homebrew-core with Linux bottle
+                     # (verified formulae.brew.sh 2026-06).
+
+# --- Traffic interception / proxying (Phase 3) -----------------------------
+brew "proxify"       # HTTP/HTTPS/SOCKS traffic interception proxy for CLI tools
+                     # (ProjectDiscovery). Route any tool through Burp or your own
+                     # listener without proxy-aware client support: prefix the
+                     # command with `proxify` and it rewrites the traffic. Go
+                     # binary, confirmed in homebrew-core with Linux bottle
+                     # (formulae.brew.sh/formula/proxify, verified 2026-06).
+                     # Distinct from the brew `proxychains-ng` (which wraps
+                     # syscalls); proxify operates at the HTTP layer.
 
 # --- Offline password cracking (Phase 3) -----------------------------------
 # Unprivileged, CPU/GPU-bound, no raw sockets -> host-side per the rubric.
@@ -85,15 +103,30 @@ brew "hashcat"       # GPU/CPU hash cracker (falls back to CPU with no GPU)
 
 # --- Online login attacks (Phase 3) ----------------------------------------
 # Connect-based brute forcing over normal TCP -- no CAP_NET_RAW needed, so
-# host-side is fine (same reasoning as host nmap's -sT connect scans). Raw-
-# socket SYN scanners (masscan / naabu) still belong in the Kali container.
+# host-side is fine (unprivileged connect-style traffic, same reasoning that
+# used to justify host nmap's -sT before nmap moved fully to the container).
+# Raw-socket SYN scanners (masscan / naabu) still belong in the Kali container.
 brew "hydra"         # parallelized network login cracker (many protocols)
 brew "ncrack"        # Nmap-project network auth cracker (overlaps hydra)
 
 # --- Port scanning (Phase 3) -----------------------------------------------
-# Connect-scan port discovery, unprivileged -- parallels the host nmap already
-# present above. SYN/raw scanning stays in the container (CAP_NET_RAW).
-brew "rustscan"      # fast async connect port scanner (hands off to nmap)
+# Connect-scan port discovery, unprivileged -- the host-side counterpart to
+# nmap's raw-socket scanning, which now lives exclusively in the container
+# (CAP_NET_RAW).
+# IMPORTANT: rustscan's DEFAULT behavior is to auto-exec `nmap` on the open
+# ports it finds. Since host nmap was removed (see the bootstrap note above),
+# a plain `rustscan -a <target>` will find ports and then fail trying to run
+# a nmap binary that doesn't exist on the host. Two ways to use it correctly:
+#   1. `rustscan -a <target> --scripts none` -- ports only, no nmap auto-pipe.
+#      Then feed the result into the container's nmap for service detection:
+#      `kali nmap -sV -sC -p <ports> <target>` (see the `kali` shell function
+#      in custom/aliases/system_files/etc/profile.d/spinofin-kali-aliases.sh).
+#   2. Skip rustscan's nmap step entirely and just run the container's nmap
+#      directly if you don't need rustscan's speed advantage on the initial
+#      port sweep.
+brew "rustscan"      # fast async connect port scanner; pair manually with the
+                     # container's nmap (see note above) -- do not rely on its
+                     # default auto-nmap behavior on this host.
 
 # --- Exploit reference (Phase 3) -------------------------------------------
 brew "exploitdb"     # local Exploit-DB archive + `searchsploit` lookup

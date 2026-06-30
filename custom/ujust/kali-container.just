@@ -238,6 +238,25 @@ link-wordlists:
     echo "  hashcat -m 0 -a 0 hashes.txt ~/wordlists/rockyou.txt"
     echo "  john --wordlist=\$HOME/wordlists/rockyou.txt hashes.txt"
 
+# Install powerview.py inside the container via pipx (re-runnable)
+[group('Kali')]
+setup-powerview:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Installing powerview.py inside '{{ kali_box }}' via container-local pipx..."
+    # powerview.py's gssapi dependency has no Linux manylinux wheel and always
+    # builds from source, requiring libkrb5-dev headers. Those are absent on
+    # Bluefin and forbidden by the no-layering policy, so host-side pipx can
+    # never install this. Both libkrb5-dev and python3-pipx are baked into the
+    # container's additional_packages specifically to make this work.
+    # Idempotent: pipx install --force handles re-runs cleanly.
+    distrobox enter --root {{ kali_box }} -- sudo bash -lc \
+        "pipx install --force 'git+https://github.com/aniqfakhrul/powerview.py'"
+    echo ""
+    echo "Done. Run powerview.py from inside the container:"
+    echo "  ujust enter-kali        # then: powerview.py --help"
+    echo "  kali powerview.py --help  # using the kali alias"
+
 # Remove the Kali toolbox container entirely
 [group('Kali')]
 remove-kali:
