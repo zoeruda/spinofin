@@ -53,12 +53,40 @@ wafw00f
 # host-side rubric it lands here (pipx) instead of brew.
 arjun
 
+# AD Certificate Services enumeration and exploitation toolkit (ly4k/Certipy).
+# Covers the full ESC1-ESC16 attack path family against AD CS. Pure Python
+# (py3-none-any wheel, verified against PyPI 2026-06). Deps are impacket,
+# ldap3, pyasn1, pycryptodome, cryptography -- all ship prebuilt manylinux
+# wheels, no system build headers required. Named `certipy-ad` on PyPI
+# (the older `certipy` package is a different, unrelated tool).
+certipy-ad
+
+# TLS/SSL analysis tool (nabla-c0d3/sslyze). Connects to servers and checks
+# ciphers, protocols, certificates, and known TLS vulns (Heartbleed, ROBOT,
+# CCS injection, CRIME, etc.). Uses nassl (a C OpenSSL wrapper), but nassl
+# ships prebuilt manylinux2014_x86_64 wheels for Python 3.10+ -- no build
+# headers needed on Bluefin / Fedora host. Distinct from the host-brew
+# `sslscan` (which does cipher enumeration only): sslyze does deeper protocol
+# analysis and structured JSON output useful for automated scanning pipelines.
+sslyze
+
+# Active Directory LDAP dumper (dirkjanm/ldapdomaindump). Enumerates users,
+# groups, computers, policies, and trusts from AD via LDAP and writes
+# HTML/JSON/grep-friendly output. Pure Python (deps: ldap3, dnspython, future
+# -- all py3-none-any or manylinux wheels, no build headers). Complements
+# BloodHound CE ingestors: ldapdomaindump gives quick human-readable output
+# without standing up Neo4j, useful for fast first-look at an AD environment.
+ldapdomaindump
+
 # --- Deliberately NOT host-side (documented per-tool decisions) -------------
-# powerview.py: needs the gssapi build dep, which requires libkrb5-dev headers
-#   at install time. The no-layering host policy forbids adding those, so this
-#   is routed to the Kali container instead (apt install libkrb5-dev + pipx).
-#   Tracked for the container unit; do NOT uncomment here.
-#   pipx install "git+https://github.com/aniqfakhrul/powerview.py"
+# powerview.py: needs the gssapi C extension, which requires libkrb5-dev
+#   headers at build time. gssapi ships no Linux manylinux wheels and always
+#   builds from source -- so host-side brew pipx cannot install it (no headers,
+#   no-layering policy). Routed to the Kali container instead, where libkrb5-dev
+#   and python3-pipx are baked into additional_packages for exactly this purpose.
+#   Install it with: ujust setup-powerview
 #
 # wfuzz: only a stale Python-2 third-party brew tap exists and upstream is
-#   effectively abandoned on modern Python; container (apt) is the saner home.
+#   effectively abandoned on modern Python -- not pipx-installable host-side.
+#   Now baked directly into the container's additional_packages (apt) instead;
+#   see custom/distrobox/spinofin-kali.ini.
