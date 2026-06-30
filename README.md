@@ -120,7 +120,7 @@ through Homebrew or Flatpak instead:
   - `git` — ad-hoc tool installs and PoC clones inside the container.
   - `tcpdump` — packet capture via `CAP_NET_RAW`.
   - `netcat-openbsd` — classic `nc` for reverse shells, port testing, file transfer.
-  - `libkrb5-dev` + `python3-pipx` — build dependency and installer for `powerview.py` (`gssapi` ships no Linux manylinux wheels and always builds from source, so host-side pipx can never install it; both are apt-legal in the container).
+  - `libkrb5-dev` + `pipx` — build dependency and installer for `powerview.py` (`gssapi` ships no Linux manylinux wheels and always builds from source, so host-side pipx can never install it; both are apt-legal in the container).
   - `netexec` (`nxc`) — SMB / LDAP / WinRM / RDP / SSH / MSSQL lateral movement and enumeration; the actively maintained CrackMapExec successor.
   - `enum4linux-ng` — next-gen SMB/Samba/AD enumeration with JSON/YAML output.
   - `sqlmap` — automated SQL injection and database takeover.
