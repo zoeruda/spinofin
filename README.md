@@ -46,6 +46,7 @@ Heavy pentest tooling lives in a single shared, rootful Kali container. Provisio
 ```bash
 ujust setup-kali              # build the shared Kali (kali-rolling) container
 ujust setup-metasploit        # initialise the Metasploit database (msfdb) inside it
+ujust setup-powerview         # install powerview.py inside the container via pipx
 ujust setup-bloodhound        # install + provision BloodHound CE (databases)
 ujust bloodhound-start        # start BloodHound CE (single 'get going' command)
 ujust export-impacket         # expose impacket-* commands to the host shell
@@ -55,7 +56,7 @@ ujust install-kali-web        # e.g. add the web-app testing family (see list fo
 ujust enter-kali              # drop into a shell in the container
 ```
 
-GUI apps (Flatseal, Wireshark, Burp Suite Community) install automatically on first boot via Flatpak — no command needed.
+GUI apps (Flatseal, Wireshark, Burp Suite Community, KeePassXC, Remmina) install automatically on first boot via Flatpak — no command needed.
 
 ## What Makes this Raptor Different?
 
@@ -86,30 +87,50 @@ through Homebrew or Flatpak instead:
 ### Added Applications (Runtime)
 
 - **CLI Tools (Homebrew)**: host-side recon/web tooling, all staged into the image at `/usr/share/ublue-os/homebrew/default.Brewfile` and installed at runtime via `ujust install-default-apps` (consistent with the no-layering policy — brew installs live in the user's writable layer, not the image):
-  - `nmap` — first pentest tool (Phase 1 sanity check). Unprivileged connect scans only on the host; raw-socket SYN scans are the rootful Kali container's job.
   - **Subdomain / DNS / ASN recon:** `subfinder`, `amass`, `dnsx`, `shuffledns` (+ `massdns` as its resolver engine), `mapcidr`, `asnmap`, `cdncheck`, `uncover`.
   - **HTTP probing & crawling:** `httpx` (ProjectDiscovery's probe — not the Python `httpx` library; see the collision note in the Brewfile), `katana`, `gau`, `tlsx`.
   - **Web fuzzing / content discovery:** `ffuf`, `feroxbuster`, `gobuster`.
   - **Web vuln / app testing:** `nuclei` (template scanner), `nikto`, `dalfox`.
   - **Secret discovery:** `trufflehog`, `gitleaks`.
-  - **TLS inspection:** `sslscan`.
+  - **TLS inspection:** `sslscan` (cipher enumeration), `testssl` (comprehensive protocol/cert/vuln analysis — human-readable engagement reports).
+  - **Traffic interception:** `proxify` (ProjectDiscovery HTTP/HTTPS proxy — route any CLI tool's traffic through Burp without proxy-aware client support; complements `proxychains-ng` which works at the syscall level).
   - **Password cracking (offline, CPU/GPU, unprivileged):** `john-jumbo`, `hashcat`.
   - **Online login attacks (connect-based, unprivileged):** `hydra`, `ncrack`.
-  - **Port scanning:** `rustscan` (connect scans, parallels host `nmap`).
-  - **Exploit reference & pivoting:** `exploitdb` (`searchsploit`), `proxychains-ng`.
-  - **Networking utilities:** `netcat`, `rlwrap` (line-editing for tools that lack their own, e.g. raw netcat shells).
+  - **Port scanning:** `rustscan` (async connect-scan port finder). **Important:** rustscan's default behaviour auto-execs `nmap` after the port sweep; since `nmap` lives only in the container now, use `rustscan -a <target> --scripts none` to get ports only, then hand off to the container's nmap via `kali nmap -sV -sC -p <ports> <target>`.
+  - **Exploit reference & pivoting:** `exploitdb` (`searchsploit`), `proxychains-ng`, `netcat`, `rlwrap`.
 
-  Which tools go host-side (here) vs. into the Kali container is governed by the **host-vs-container rubric** documented at the top of [`custom/brew/default.Brewfile`](custom/brew/default.Brewfile). Raw-socket / privileged / Kali-only / heavy-dependency tools (e.g. `masscan`, `naabu`) stay in the container; Python-only tools without a clean formula go in the `pipx` bucket below. `pipx` itself is installed via this Brewfile to bootstrap that bucket.
+  Which tools go host-side (here) vs. into the Kali container is governed by the **host-vs-container rubric** documented at the top of [`custom/brew/default.Brewfile`](custom/brew/default.Brewfile). Raw-socket / privileged / Kali-only / heavy-dependency tools (e.g. `masscan`, `naabu`, `nmap`) stay in the container; Python-only tools without a clean formula go in the `pipx` bucket below. `pipx` itself is installed via this Brewfile to bootstrap that bucket.
 - **CLI Tools (pipx)**: Python-only tools with no clean Homebrew formula, declared in [`custom/pipx/default.pipx`](custom/pipx/default.pipx) and installed at runtime via `ujust install-pipx-tools` into the user's isolated pipx venvs (same no-layering posture as brew):
   - `bloodyAD` — Active Directory privesc framework (pure-Python wheel, no system build deps).
   - `soaphound` — BloodHound ingestor over ADWS/SOAP (the Python tool, not the .NET one). Pure-Python; its only real dependency, `impacket`, installs from prebuilt manylinux wheels and pulls no `gssapi`, so no system build headers are needed. That bundled `impacket` is isolated inside soaphound's own pipx venv and is **not** on `$PATH` — the standalone `impacket-*` CLI scripts come from the **container** instead (see below), so there's no host/container collision.
   - `bloodhound-ce` — provides the `bloodhound-ce-python` ingestor for **BloodHound CE** (not legacy `bloodhound-python`). Same lineage as impacket and the same shape as `soaphound`: a `py3-none-any` wheel whose dependencies (dnspython, impacket, ldap3, pyasn1, pycryptodome) are pure-Python or ship prebuilt manylinux wheels — no `gssapi`, no build headers.
   - `wafw00f` — web application firewall fingerprinting (pure-Python; not in homebrew-core).
   - `arjun` — HTTP parameter discovery (has a brew formula but no Linux bottle, so it lands here).
-  - Routed to the Kali container instead (documented in the list file): `powerview.py` (needs `libkrb5-dev` build headers, which the no-layering host policy forbids) and `wfuzz` (only a stale Python-2 brew tap exists).
+  - `certipy-ad` — AD Certificate Services enumeration and exploitation (ESC1–ESC16 attack paths). Pure-Python `py3-none-any` wheel; all deps ship prebuilt manylinux wheels.
+  - `sslyze` — deep TLS/SSL server analysis: ciphers, protocols, certificates, and known attack vulns (Heartbleed, ROBOT, CRIME, etc.) with structured JSON output. Its C extension (`nassl`) ships prebuilt `manylinux2014_x86_64` wheels for Python 3.10+, so no build headers are needed on the host.
+  - `ldapdomaindump` — Active Directory LDAP dump: enumerates users, groups, computers, policies, and trusts and writes HTML/JSON/grep-friendly output. Quick first-look at an AD environment without standing up Neo4j. Pure-Python deps, no build headers.
+  - Routed to the Kali container instead (documented in the list file): `powerview.py` (needs `libkrb5-dev` build headers — `gssapi` ships no Linux manylinux wheels and always builds from source; install with `ujust setup-powerview`) and `wfuzz` (only a stale Python-2 brew tap exists; now baked into the container via apt).
 - **Container tool families (Kali metapackages)**: pulled on demand into the shared rootful Kali container via the recipes in [`custom/ujust/kali-toolsets.just`](custom/ujust/kali-toolsets.just) (container-local `apt`, never host layering). `ujust list-kali-toolsets` lists them; e.g. `ujust install-kali-web`, `-passwords`, `-information-gathering`, `-exploitation`. Hardware families (wireless, bluetooth, rfid, sdr) are intentionally omitted pending host device passthrough.
-- **Container-baked tooling, wordlists & databases**: declared in [`custom/distrobox/spinofin-kali.ini`](custom/distrobox/spinofin-kali.ini) and managed by recipes in [`custom/ujust/kali-container.just`](custom/ujust/kali-container.just). Baked into the container at assemble time: `metasploit-framework` + `postgresql`, `impacket-scripts`, `vim` + `fastfetch` (basic editor and system-info banner, confirmed present in `kali-rolling`), and the Kali wordlist trees `seclists` + `wordlists` (at the canonical `/usr/share/seclists` and `/usr/share/wordlists` — `seclists` is ~1 GB+, so the assemble is heavier by design). Setup/launch recipes:
+- **Container-baked tooling, wordlists & databases**: declared in [`custom/distrobox/spinofin-kali.ini`](custom/distrobox/spinofin-kali.ini) and managed by recipes in [`custom/ujust/kali-container.just`](custom/ujust/kali-container.just). Baked into the container at assemble time:
+  - `metasploit-framework` + `postgresql` — core framework and its database backend.
+  - `impacket-scripts` — `/usr/bin/impacket-*` wrappers; exported to the host via `ujust export-impacket`.
+  - `vim` + `nano` — editor baseline.
+  - `fastfetch` — system-info banner on container entry.
+  - `nmap` — runs with full `CAP_NET_RAW` in the rootful container: raw-socket SYN scans (`-sS`), OS detection (`-O`), and the NSE script engine (`--script`). This is the primary reason `nmap` lives here rather than host-side; the host has no privileged networking capability. Access it as `kali nmap …` or from inside `ujust enter-kali`.
+  - `git` — ad-hoc tool installs and PoC clones inside the container.
+  - `tcpdump` — packet capture via `CAP_NET_RAW`.
+  - `netcat-openbsd` — classic `nc` for reverse shells, port testing, file transfer.
+  - `libkrb5-dev` + `python3-pipx` — build dependency and installer for `powerview.py` (`gssapi` ships no Linux manylinux wheels and always builds from source, so host-side pipx can never install it; both are apt-legal in the container).
+  - `netexec` (`nxc`) — SMB / LDAP / WinRM / RDP / SSH / MSSQL lateral movement and enumeration; the actively maintained CrackMapExec successor.
+  - `enum4linux-ng` — next-gen SMB/Samba/AD enumeration with JSON/YAML output.
+  - `sqlmap` — automated SQL injection and database takeover.
+  - `wfuzz` — web application fuzzer (forms, headers, parameters, directories); only a stale Python-2 brew tap exists upstream so the Kali apt build is the clean home.
+  - `seclists` + `wordlists` — Kali wordlist trees at the canonical `/usr/share/seclists` and `/usr/share/wordlists` (`seclists` is ~1 GB+, so the assemble is heavier by design).
+  - `systemd` + `libpam-systemd` — required because the container runs as an init container (`init=true` in the `.ini`) so that systemd-managed services (BloodHound CE, PostgreSQL) work as they do on stock Kali.
+
+  Setup/launch recipes:
   - `ujust setup-metasploit` — initialise the Metasploit `msfdb` database.
+  - `ujust setup-powerview` — install `powerview.py` inside the container via the container-local `pipx` (requires `libkrb5-dev` headers baked in; `gssapi` ships no Linux manylinux wheels so host-side pipx cannot install this). Idempotent — safe to re-run. Use `kali powerview.py --help` or enter the container to run it.
   - `ujust setup-bloodhound` → `ujust bloodhound-start` — install BloodHound CE on demand, provision its PostgreSQL + neo4j databases, then start it. You only need `setup-bloodhound` **once**; after every later reboot, `bloodhound-start` alone re-runs that same proven bring-up sequence (cheap, no apt, fully offline) and starts the service — no need to repeat `setup-bloodhound`. BloodHound is managed by a systemd unit, so the container runs as an **init container** (`init=true` in the `.ini`); if a command errors with *"System has not been booted with systemd as init system"*, the container predates that and needs `ujust rebuild-kali`. **Headless handling:** Kali's helpers try to pop a local browser (`xdg-open`), which has no display in the container — so both recipes neutralize that step (provisioning still completes; you open **`http://localhost:7474`** in your *host* browser the first time to set the neo4j password and update `/etc/bhapi/bhapi.json`), and `bloodhound-start` starts the stack **non-blocking** instead of running Kali's wait-for-API-then-`xdg-open` wrapper (which hangs headless). Open the UI at **`http://localhost:8080`** in your host browser. **Note on neo4j:** Kali's bloodhound package manages neo4j directly via its own binary, not as a `neo4j.service` systemd unit — so a warning mentioning `neo4j.service` (e.g. *"Unit ... not found"*) is expected and safe to ignore; the bring-up step already starts/verifies neo4j the correct (non-systemd) way.
   - `ujust export-impacket` — surface the container's `impacket-*` scripts to the host shell as distrobox wrappers in `~/.local/bin`, so `impacket-secretsdump` (etc.) run from the host but execute in the container. **Privilege caveat:** the exported wrappers enter the container as your *user*, so impacket tools that need root inside the container (raw sockets / low ports — e.g. `ntlmrelayx`, some ICMP/rpc paths) fail through the plain wrapper. Run those with the container's sudo instead: `distrobox enter --root spinofin-kali -- sudo impacket-<tool> <args>`.
   - `ujust link-wordlists` — stage the Kali wordlists for **host-native** tools (john, hashcat, ffuf). distrobox shares only `$HOME` (not the container's `/usr`), *and* `/usr/share/wordlists` is mostly symlinks into other packages (many dangling), so a bare symlink/copy would be broken on the host. Instead this stages **real files** under `~/.local/share/spinofin/wordlists` (linked as `~/wordlists`): it relocates the `seclists` tree there (symlinking `/usr/share/seclists` back so the container keeps its path) and decompresses `rockyou` to `~/wordlists/rockyou.txt`. Use e.g. `hashcat -m 0 -a 0 hashes.txt ~/wordlists/rockyou.txt` or `john --wordlist=~/wordlists/rockyou.txt hashes.txt`, plus the real lists under `~/wordlists/seclists/Passwords/`.
@@ -125,6 +146,8 @@ through Homebrew or Flatpak instead:
   - `net.portswigger.BurpSuite-Community` — Burp Suite Community Edition (web proxy / app-testing). **Note:** this is a community-maintained Flathub *wrapper* of the proprietary Burp Community build — it is not verified by or affiliated with PortSwigger.
   - `net.giuspen.cherrytree` — Cherrytree, hierarchical note-taking for structured engagement notes. (Current Flathub ID is `net.giuspen.cherrytree`; the older `com.giuspen.cherrytree` is superseded.)
   - `md.obsidian.Obsidian` — Obsidian, Markdown knowledge base for notes/reporting. Verified by the Obsidian team on Flathub; proprietary EULA, ~600 MiB.
+  - `org.keepassxc.KeePassXC` — local password manager for storing credentials found during an engagement (cracked hashes, service accounts, reused passwords). Published on Flathub by the KeePassXC team. No cloud sync; supports TOTP and SSH agent integration.
+  - `org.remmina.Remmina` — RDP / VNC / SSH / X2Go GUI client, essential for accessing compromised Windows hosts over RDP or pivoting to internal Linux machines. GTK-based (fits the GNOME desktop). **Note:** Flatpak sandboxing may restrict SSH key access from `~/.ssh` — grant filesystem access via Flatseal if needed.
 
 ### Removed/Disabled
 
@@ -135,7 +158,7 @@ through Homebrew or Flatpak instead:
 - No-layering policy as mentioned above
 - Custom Branding: Spinosaurus sail logo and spinofin wordmark to replace Bluefin's branding
 
-_Last updated: 2026-06-29_
+_Last updated: 2026-06-30_
 
 > Replace the placeholders above with your actual customizations whenever you add or remove packages, apps, or configuration. This section is what tells users how your image differs from the base.
 
