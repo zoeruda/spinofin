@@ -30,8 +30,6 @@ setup-kali:
         exit 1
     fi
     echo "Assembling '{{ kali_box }}' from {{ kali_ini }}"
-    echo "Run as your normal user (not sudo); root=true in the INI handles"
-    echo "escalation and keeps the msfconsole export in ~/.local/bin."
     echo "First run is heavy: pulling kali-rolling + installing tools..."
     distrobox assemble create --file "{{ kali_ini }}"
     echo ""
@@ -52,8 +50,107 @@ setup-kali:
     echo "  ujust setup-powerview    # install powerview.py via container-local pipx"
     echo "  ujust export-impacket    # surface impacket-* scripts to your host shell"
     echo "  ujust link-wordlists     # stage real wordlist files for host-native tools"
+    echo "  ujust toggle-nmap        # choose where nmap lives (container/host/both/none)"
     echo "  ujust enter-kali         # drop into the container directly"
     echo "Run 'ujust --list' to see all available Kali recipes."
+
+# Choose where nmap is installed: container-only (default), host-only, both, or none
+[group('Kali')]
+toggle-nmap:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # nmap is baked into custom/distrobox/spinofin-kali.ini's additional_packages,
+    # so container-only is the state a FRESH `setup-kali` gives you with zero
+    # extra steps -- that is what "default" means below, not this recipe's own
+    # default selection. Host-side nmap is deliberately NOT baked into
+    # custom/brew/default.Brewfile (see its bootstrap note) -- capped to
+    # unprivileged connect scans (-sT) with no CAP_NET_RAW, it exists mainly to
+    # pair with rustscan's auto-nmap pipe (see the Brewfile's rustscan note).
+    # This recipe manages the LIVE state on each side; it does not edit the
+    # manifest, so a later `ujust rebuild-kali` re-creates the container from
+    # the manifest as-is and brings container nmap back regardless of what you
+    # picked here -- re-run this after a rebuild if you want a different state.
+    echo "Where do you want nmap installed?"
+    echo "  1. Container-only nmap (default): run with the 'kali' alias --"
+    echo "     full raw-socket scans (-sS, -O, --script) via CAP_NET_RAW."
+    echo "  2. Host-only: recommended for rustscan integration -- unprivileged"
+    echo "     connect scans only (-sT), no raw sockets."
+    echo "  3. Both"
+    echo "  4. None: bring your own scanner"
+    read -rp "Enter a number [1-4]: " choice
+    case "${choice}" in
+        1) want_host=0; want_container=1 ;;
+        2) want_host=1; want_container=0 ;;
+        3) want_host=1; want_container=1 ;;
+        4) want_host=0; want_container=0 ;;
+        *)
+            echo "ERROR: invalid choice '${choice}' -- expected 1, 2, 3, or 4." >&2
+            exit 1
+            ;;
+    esac
+
+    # --- Host side (brew; user-scoped, runtime-only, not baked into the image) ---
+    if [ "${want_host}" -eq 1 ]; then
+        if ! command -v brew >/dev/null 2>&1; then
+            echo "ERROR: brew not found on host. Run 'ujust install-default-apps'" >&2
+            echo "(or install Homebrew) first, then re-run 'ujust toggle-nmap'." >&2
+            exit 1
+        fi
+        if brew list --formula nmap >/dev/null 2>&1; then
+            echo "Host nmap: already installed (brew)."
+        else
+            echo "Installing host nmap (brew) -- unprivileged connect scans only (-sT)..."
+            brew install nmap
+        fi
+    else
+        if command -v brew >/dev/null 2>&1 && brew list --formula nmap >/dev/null 2>&1; then
+            echo "Removing host nmap (brew)..."
+            brew uninstall nmap
+        else
+            echo "Host nmap: already absent."
+        fi
+    fi
+
+    # --- Container side (apt inside the rootful spinofin-kali container) ---
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        if [ "${want_container}" -eq 1 ]; then
+            echo "NOTE: container '{{ kali_box }}' doesn't exist yet. nmap is already"
+            echo "baked into its manifest, so it will be present as soon as you run"
+            echo "'ujust setup-kali' -- nothing more to do here."
+        else
+            echo "NOTE: container '{{ kali_box }}' doesn't exist yet -- skipping the container side."
+        fi
+    else
+        if [ "${want_container}" -eq 1 ]; then
+            distrobox enter --root {{ kali_box }} -- bash -lc '
+                if command -v nmap >/dev/null 2>&1; then
+                    echo "Container nmap: already installed."
+                else
+                    echo "Installing container nmap (apt, CAP_NET_RAW available)..."
+                    sudo apt-get update -qq
+                    sudo apt-get install -y nmap
+                fi
+            '
+        else
+            distrobox enter --root {{ kali_box }} -- bash -lc '
+                if command -v nmap >/dev/null 2>&1; then
+                    echo "Removing container nmap..."
+                    sudo apt-get remove -y nmap
+                else
+                    echo "Container nmap: already absent."
+                fi
+            '
+        fi
+    fi
+
+    echo ""
+    echo "Done."
+    if [ "${want_container}" -eq 0 ]; then
+        echo "NOTE: nmap is still declared in custom/distrobox/spinofin-kali.ini's"
+        echo "additional_packages, so 'ujust rebuild-kali' will reinstall it in the"
+        echo "container (the manifest is the source of truth for a fresh container)."
+        echo "Re-run 'ujust toggle-nmap' after a rebuild if you want it removed again."
+    fi
 
 # Enter an interactive shell in the Kali toolbox container
 [group('Kali')]
@@ -87,6 +184,11 @@ enter-kali:
 rebuild-kali:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Nothing to rebuild -- run 'ujust setup-kali' to create it first." >&2
+        exit 1
+    fi
     echo "Replacing '{{ kali_box }}' from {{ kali_ini }} ..."
     distrobox assemble create --replace --file "{{ kali_ini }}"
     echo "Rebuilt. Re-run 'ujust setup-metasploit' to reinitialize the database."
@@ -237,19 +339,8 @@ export-impacket:
     # to drift. Re-runnable; new scripts appear after a container update + re-run.
     # NOTE: uses the same rootful distrobox-export path as the msfconsole export,
     # so it inherits the same rootful-$HOME considerations -- validate on real boot.
-    #
-    # PRIVILEGE CAVEAT: the exported ~/.local/bin wrappers enter the container as
-    # your USER (unprivileged). Several impacket tools need root INSIDE the
-    # container -- e.g. raw sockets / low ports for ntlmrelayx, the ICMP/ping
-    # paths, rpcdump on some transports. Those work with sudo in the container
-    # but fail through the plain exported wrapper. To run one as root in the
-    # container FROM THE HOST, bypass the wrapper and use the container's sudo:
-    #     distrobox enter --root {{ kali_box }} -- sudo impacket-ntlmrelayx <args>
-    # (general form: distrobox enter --root {{ kali_box }} -- sudo impacket-<tool> <args>)
     distrobox enter --root {{ kali_box }} -- bash -lc 'n=0; for b in /usr/bin/impacket-*; do distrobox-export --bin "$b" --export-path "$HOME/.local/bin" >/dev/null 2>&1 || true; n=$((n + 1)); done; echo "Exported ${n} impacket-* commands to ~/.local/bin"'
-    echo "Done. Unprivileged tools: run impacket-secretsdump (etc.) straight from your shell."
-    echo "Tools needing root in the container (e.g. ntlmrelayx) -- run with the container's sudo:"
-    echo "  distrobox enter --root {{ kali_box }} -- sudo impacket-<tool> <args>"
+    echo "Done. Run impacket-secretsdump (etc.) straight from your shell."
 
 # Expose the container's Kali wordlists to HOST-native tools (single copy, via $HOME)
 [group('Kali')]
@@ -353,5 +444,4 @@ remove-kali:
     set -euo pipefail
     echo "Removing '{{ kali_box }}' ..."
     distrobox rm --root --force {{ kali_box }} || true
-    echo "Removed. Note: the exported msfconsole wrapper in ~/.local/bin may"
-    echo "remain; delete it manually if desired."
+    echo "Removed."
