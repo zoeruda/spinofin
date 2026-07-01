@@ -30,8 +30,6 @@ setup-kali:
         exit 1
     fi
     echo "Assembling '{{ kali_box }}' from {{ kali_ini }}"
-    echo "Run as your normal user (not sudo); root=true in the INI handles"
-    echo "escalation and keeps the msfconsole export in ~/.local/bin."
     echo "First run is heavy: pulling kali-rolling + installing tools..."
     distrobox assemble create --file "{{ kali_ini }}"
     echo ""
@@ -87,6 +85,11 @@ enter-kali:
 rebuild-kali:
     #!/usr/bin/env bash
     set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Nothing to rebuild -- run 'ujust setup-kali' to create it first." >&2
+        exit 1
+    fi
     echo "Replacing '{{ kali_box }}' from {{ kali_ini }} ..."
     distrobox assemble create --replace --file "{{ kali_ini }}"
     echo "Rebuilt. Re-run 'ujust setup-metasploit' to reinitialize the database."
@@ -237,19 +240,8 @@ export-impacket:
     # to drift. Re-runnable; new scripts appear after a container update + re-run.
     # NOTE: uses the same rootful distrobox-export path as the msfconsole export,
     # so it inherits the same rootful-$HOME considerations -- validate on real boot.
-    #
-    # PRIVILEGE CAVEAT: the exported ~/.local/bin wrappers enter the container as
-    # your USER (unprivileged). Several impacket tools need root INSIDE the
-    # container -- e.g. raw sockets / low ports for ntlmrelayx, the ICMP/ping
-    # paths, rpcdump on some transports. Those work with sudo in the container
-    # but fail through the plain exported wrapper. To run one as root in the
-    # container FROM THE HOST, bypass the wrapper and use the container's sudo:
-    #     distrobox enter --root {{ kali_box }} -- sudo impacket-ntlmrelayx <args>
-    # (general form: distrobox enter --root {{ kali_box }} -- sudo impacket-<tool> <args>)
     distrobox enter --root {{ kali_box }} -- bash -lc 'n=0; for b in /usr/bin/impacket-*; do distrobox-export --bin "$b" --export-path "$HOME/.local/bin" >/dev/null 2>&1 || true; n=$((n + 1)); done; echo "Exported ${n} impacket-* commands to ~/.local/bin"'
-    echo "Done. Unprivileged tools: run impacket-secretsdump (etc.) straight from your shell."
-    echo "Tools needing root in the container (e.g. ntlmrelayx) -- run with the container's sudo:"
-    echo "  distrobox enter --root {{ kali_box }} -- sudo impacket-<tool> <args>"
+    echo "Done. Run impacket-secretsdump (etc.) straight from your shell."
 
 # Expose the container's Kali wordlists to HOST-native tools (single copy, via $HOME)
 [group('Kali')]
@@ -353,5 +345,4 @@ remove-kali:
     set -euo pipefail
     echo "Removing '{{ kali_box }}' ..."
     distrobox rm --root --force {{ kali_box }} || true
-    echo "Removed. Note: the exported msfconsole wrapper in ~/.local/bin may"
-    echo "remain; delete it manually if desired."
+    echo "Removed."

@@ -3,9 +3,7 @@
 #
 #   kali <cmd>      -- run <cmd> in the spinofin-kali container as YOUR USER
 #                       (no args -> interactive shell, same as `ujust enter-kali`)
-#   kalisudo <cmd>  -- same, but as ROOT in the container (needed for raw
-#                       sockets / low ports -- see the impacket privilege
-#                       caveat in the README)
+#   kalisudo <cmd>  -- same, but as ROOT in the container
 #
 # Plain functions (not `alias`) so multi-word/quoted arguments forward
 # correctly.

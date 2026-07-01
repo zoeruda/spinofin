@@ -26,14 +26,11 @@ they've switched shells.
 functions for running a command in the shared `spinofin-kali` container
 without typing the full `distrobox enter --root spinofin-kali -- ...` --
 the same `distrobox enter` pattern already used throughout
-`custom/ujust/kali-container.just` and the impacket privilege caveat in the
-main README:
+`custom/ujust/kali-container.just`:
 
 - `kali <cmd>` — run `<cmd>` in the container as your user. No args drops
   you into an interactive shell (same as `ujust enter-kali`).
-- `kalisudo <cmd>` — same, but as root in the container (needed for raw
-  sockets / low ports, e.g. some impacket tools -- see the README's
-  impacket privilege caveat).
+- `kalisudo <cmd>` — same, but as root in the container.
 
 Both error harmlessly toward `ujust setup-kali` if the container hasn't been
 created yet, rather than letting `distrobox enter` fall through to its
