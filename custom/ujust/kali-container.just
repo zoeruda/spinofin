@@ -29,6 +29,21 @@ setup-kali:
         echo "ERROR: manifest not found at {{ kali_ini }}" >&2
         exit 1
     fi
+    # spinofin-kali.ini sets replace=true on the [spinofin-kali] entry itself
+    # (rebuild-kali relies on that). That means ANY `distrobox assemble
+    # create` run against this manifest destroys and recreates an existing
+    # container -- even here, with no --replace on the CLI. setup-kali is
+    # meant to be the safe "make sure this exists" entry point, so it must
+    # never call assemble against a container that's already there. Point to
+    # rebuild-kali instead, which exists specifically to do that on purpose.
+    if distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "Container '{{ kali_box }}' already exists. setup-kali never"
+        echo "touches an existing container (the manifest's replace=true would"
+        echo "destroy it), so there's nothing to do here."
+        echo "  ujust enter-kali    # use the existing container"
+        echo "  ujust rebuild-kali  # destroy and recreate it from scratch"
+        exit 0
+    fi
     echo "Assembling '{{ kali_box }}' from {{ kali_ini }}"
     echo "First run is heavy: pulling kali-rolling + installing tools..."
     distrobox assemble create --file "{{ kali_ini }}"
@@ -59,29 +74,32 @@ setup-kali:
 toggle-nmap:
     #!/usr/bin/env bash
     set -euo pipefail
-    # nmap is baked into custom/distrobox/spinofin-kali.ini's additional_packages,
-    # so container-only is the state a FRESH `setup-kali` gives you with zero
-    # extra steps -- that is what "default" means below, not this recipe's own
-    # default selection. Host-side nmap is deliberately NOT baked into
-    # custom/brew/default.Brewfile (see its bootstrap note) -- capped to
-    # unprivileged connect scans (-sT) with no CAP_NET_RAW, it exists mainly to
-    # pair with rustscan's auto-nmap pipe (see the Brewfile's rustscan note).
-    # This recipe manages the LIVE state on each side; it does not edit the
-    # manifest, so a later `ujust rebuild-kali` re-creates the container from
-    # the manifest as-is and brings container nmap back regardless of what you
-    # picked here -- re-run this after a rebuild if you want a different state.
+    # nmap is baked into custom/distrobox/spinofin-kali.ini's additional_packages
+    # (container side) AND is a real `depends_on "nmap"` of rustscan's
+    # homebrew-core formula (host side, via custom/brew/default.Brewfile) -- so
+    # "both" is the state a totally fresh setup/install-default-apps gives you
+    # with zero extra steps; that's why it's the default below, not container-
+    # only. This recipe manages the LIVE state on each side; it does not edit
+    # either source of truth, so re-provisioning from either one brings its
+    # copy of nmap back regardless of what you picked here (see the notes at
+    # the end).
     echo "Where do you want nmap installed?"
-    echo "  1. Container-only nmap (default): run with the 'kali' alias --"
-    echo "     full raw-socket scans (-sS, -O, --script) via CAP_NET_RAW."
-    echo "  2. Host-only: recommended for rustscan integration -- unprivileged"
-    echo "     connect scans only (-sT), no raw sockets."
-    echo "  3. Both"
+    echo "  1. Both (default): brew's rustscan formula pulls in host nmap as a"
+    echo "     real dependency anyway, so this is the natural resting state --"
+    echo "     host nmap gets unprivileged connect scans (-sT) via brew, and"
+    echo "     the container keeps full raw-socket scans (-sS, -O, --script)"
+    echo "     via CAP_NET_RAW, run with the 'kali' alias."
+    echo "  2. Container-only: full raw-socket scans (-sS, -O, --script) via"
+    echo "     CAP_NET_RAW, run with the 'kali' alias -- recommended if you"
+    echo "     want full scan capability without a duplicate host copy."
+    echo "  3. Host-only: unprivileged connect scans only (-sT), no raw"
+    echo "     sockets -- recommended for rustscan integration."
     echo "  4. None: bring your own scanner"
     read -rp "Enter a number [1-4]: " choice
     case "${choice}" in
-        1) want_host=0; want_container=1 ;;
-        2) want_host=1; want_container=0 ;;
-        3) want_host=1; want_container=1 ;;
+        1) want_host=1; want_container=1 ;;
+        2) want_host=0; want_container=1 ;;
+        3) want_host=1; want_container=0 ;;
         4) want_host=0; want_container=0 ;;
         *)
             echo "ERROR: invalid choice '${choice}' -- expected 1, 2, 3, or 4." >&2
@@ -105,7 +123,14 @@ toggle-nmap:
     else
         if command -v brew >/dev/null 2>&1 && brew list --formula nmap >/dev/null 2>&1; then
             echo "Removing host nmap (brew)..."
-            brew uninstall nmap
+            # --ignore-dependencies: rustscan's homebrew-core formula declares a
+            # real `depends_on "nmap"` (it auto-execs nmap on the ports it finds --
+            # see the Brewfile's rustscan note), so a plain `brew uninstall nmap`
+            # refuses with "nmap is a dependency of rustscan" while rustscan is
+            # installed. This only skips brew's own dependency check; it does not
+            # touch rustscan, which still works standalone (`--scripts none` or
+            # piping into the container's nmap -- see that same Brewfile note).
+            brew uninstall --ignore-dependencies nmap
         else
             echo "Host nmap: already absent."
         fi
@@ -145,11 +170,20 @@ toggle-nmap:
 
     echo ""
     echo "Done."
+    if [ "${want_host}" -eq 0 ]; then
+        echo "NOTE: rustscan's homebrew-core formula declares a real dependency on"
+        echo "nmap, so 'ujust install-default-apps' (or 'install-all-brew') will pull"
+        echo "host nmap back in the next time you run it -- that recipe now detects"
+        echo "and repairs formulas with missing dependencies (via 'brew missing')."
+        echo "Re-run 'ujust toggle-nmap' afterward if you want it removed again."
+    fi
     if [ "${want_container}" -eq 0 ]; then
         echo "NOTE: nmap is still declared in custom/distrobox/spinofin-kali.ini's"
         echo "additional_packages, so 'ujust rebuild-kali' will reinstall it in the"
-        echo "container (the manifest is the source of truth for a fresh container)."
-        echo "Re-run 'ujust toggle-nmap' after a rebuild if you want it removed again."
+        echo "container (the manifest is the source of truth). 'ujust setup-kali'"
+        echo "never touches an existing container, so it won't bring it back on its"
+        echo "own. Re-run 'ujust toggle-nmap' after a rebuild if you want it removed"
+        echo "again."
     fi
 
 # Enter an interactive shell in the Kali toolbox container
