@@ -31,6 +31,27 @@ _spinofin_kali_check() {
 
 kali() {
     _spinofin_kali_check || return 1
+    if [ "$#" -eq 0 ]; then
+        # No args -> full interactive shell, identical to `ujust enter-kali`.
+        # Do NOT fall through to the `-- "$@"` form below with an empty command:
+        # a trailing `distrobox enter ... --` with nothing after it does not
+        # reliably drop you into the container's LOGIN shell -- you can land in a
+        # non-login, non-interactive shell where ~/.bashrc is never sourced, so
+        # there is no prompt (PS1) and the environment is stripped. Calling
+        # `distrobox enter` with no command at all takes distrobox's default
+        # path, which execs your shell as a login shell (verified in distrobox:
+        # an empty command runs `$SHELL -l`), giving the full prompt + env.
+        # --no-workdir enters at the container's $HOME rather than the host cwd
+        # (a rootful box maps that under /run/host), and the `|| true` mirror
+        # enter-kali exactly: leaving via `exit`/Ctrl-D carries your LAST
+        # command's exit code, which is not a failure of `kali` itself.
+        distrobox enter --root --no-workdir spinofin-kali || true
+        return
+    fi
+    # With args -> run that command in the container as your user, non-login and
+    # non-interactive (unchanged). ~/.bashrc is NOT sourced on this path, which
+    # is why such tools must be reachable without a shell rc -- see the
+    # /usr/local/bin symlink note in setup-powerview (kali-container.just).
     distrobox enter --root spinofin-kali -- "$@"
 }
 
