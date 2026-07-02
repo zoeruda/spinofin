@@ -46,7 +46,39 @@ setup-kali:
     fi
     echo "Assembling '{{ kali_box }}' from {{ kali_ini }}"
     echo "First run is heavy: pulling kali-rolling + installing tools..."
-    distrobox assemble create --file "{{ kali_ini }}"
+    # The assemble is where the intermittent failure happens: the container's
+    # own init prints "distrobox: Installing basic packages..." and then runs
+    # apt (base deps + this manifest's additional_packages) INSIDE the box. That
+    # output streams here but scrolls away, so a mid-run apt error is easy to
+    # miss. Capture the full combined output to a timestamped log so the exact
+    # error is preserved for next time, and ask distrobox for extra host-side
+    # detail via DBX_VERBOSE (honored by current distrobox; harmless if not).
+    log_dir="${HOME}/.local/share/spinofin/logs"
+    mkdir -p "${log_dir}"
+    log="${log_dir}/setup-kali-$(date +%Y%m%d-%H%M%S).log"
+    echo "Logging full output to: ${log}"
+    set +e
+    DBX_VERBOSE=1 distrobox assemble create --file "{{ kali_ini }}" 2>&1 | tee "${log}"
+    rc=${PIPESTATUS[0]}
+    set -e
+    if [ "${rc}" -ne 0 ]; then
+        echo "" >&2
+        echo "ERROR: assembling '{{ kali_box }}' failed (exit ${rc})." >&2
+        echo "Full output was saved to: ${log}" >&2
+        echo "----- last 40 lines of the log -----" >&2
+        tail -n 40 "${log}" >&2 || true
+        echo "------------------------------------" >&2
+        # setup-kali's guard (top of this recipe) refuses to run while a
+        # container named '{{ kali_box }}' exists, because the manifest would
+        # replace it. A failed assemble leaves a PARTIAL container behind, which
+        # would trip that guard and block a plain re-run. Remove it so
+        # 'ujust setup-kali' can simply be run again. (rebuild-kali does the
+        # opposite on failure -- it KEEPS the partial container, because its own
+        # guard requires one to exist.)
+        echo "Removing the partial container so 'ujust setup-kali' can be re-run..." >&2
+        distrobox rm --root --force {{ kali_box }} >/dev/null 2>&1 || true
+        exit "${rc}"
+    fi
     echo ""
     echo "Configuring the container's sudo prompt to show its hostname..."
     # Disambiguates host vs. container sudo prompts (e.g. "[sudo] password for
@@ -58,6 +90,8 @@ setup-kali:
     # root:root is REQUIRED for sudo to honor a sudoers.d file at all; no dot
     # in the filename either (sudo ignores dotted filenames in this directory).
     # Re-running `setup-kali` simply overwrites this file -- idempotent.
+    # NOTE: rebuild-kali repeats this exact command (a --replace wipes the file);
+    # KEEP THE TWO BYTE-FOR-BYTE IDENTICAL so both recipes yield the same container.
     distrobox enter --root {{ kali_box }} -- sudo bash -c 'printf "%s\n" "Defaults passprompt=\"[sudo] password for %p (on %h): \"" > /etc/sudoers.d/spinofin-sudo-prompt && chown root:root /etc/sudoers.d/spinofin-sudo-prompt && chmod 0440 /etc/sudoers.d/spinofin-sudo-prompt'
     echo "Container ready. Suggested next steps:"
     echo "  ujust setup-metasploit   # initialize the Metasploit database"
@@ -224,7 +258,43 @@ rebuild-kali:
         exit 1
     fi
     echo "Replacing '{{ kali_box }}' from {{ kali_ini }} ..."
-    distrobox assemble create --replace --file "{{ kali_ini }}"
+    # Same intermittent failure point as setup-kali (the container's init runs
+    # apt after "distrobox: Installing basic packages..."). Capture the full
+    # combined output to a timestamped log and ask distrobox for extra host-side
+    # detail via DBX_VERBOSE, so the exact apt error is preserved for next time.
+    log_dir="${HOME}/.local/share/spinofin/logs"
+    mkdir -p "${log_dir}"
+    log="${log_dir}/rebuild-kali-$(date +%Y%m%d-%H%M%S).log"
+    echo "Logging full output to: ${log}"
+    set +e
+    DBX_VERBOSE=1 distrobox assemble create --replace --file "{{ kali_ini }}" 2>&1 | tee "${log}"
+    rc=${PIPESTATUS[0]}
+    set -e
+    if [ "${rc}" -ne 0 ]; then
+        echo "" >&2
+        echo "ERROR: rebuilding '{{ kali_box }}' failed (exit ${rc})." >&2
+        echo "Full output was saved to: ${log}" >&2
+        echo "----- last 40 lines of the log -----" >&2
+        tail -n 40 "${log}" >&2 || true
+        echo "------------------------------------" >&2
+        # Unlike setup-kali, we deliberately DO NOT remove the container here.
+        # rebuild-kali's guard (top of this recipe) requires a container named
+        # '{{ kali_box }}' to already exist, and --replace leaves a partial one
+        # behind on a failed run. Keeping it means 'ujust rebuild-kali' can just
+        # be run again -- its --replace destroys and recreates it. If the box is
+        # wedged past that, reboot, or 'ujust remove-kali && ujust setup-kali'.
+        exit "${rc}"
+    fi
+    # Re-apply the container's sudo-prompt drop-in. --replace recreates the box
+    # from the image, which WIPES /etc/sudoers.d/spinofin-sudo-prompt -- that
+    # file is written here at runtime, not baked into the image or the manifest,
+    # so without this step a rebuilt container would differ from a setup-kali
+    # one (no hostname in its sudo prompt). KEEP THIS COMMAND BYTE-FOR-BYTE
+    # IDENTICAL to the one in setup-kali (see the fuller rationale there); the
+    # two together are what make setup-kali and rebuild-kali yield an identical
+    # container. Idempotent: it just overwrites the file.
+    echo "Reconfiguring the container's sudo prompt to show its hostname..."
+    distrobox enter --root {{ kali_box }} -- sudo bash -c 'printf "%s\n" "Defaults passprompt=\"[sudo] password for %p (on %h): \"" > /etc/sudoers.d/spinofin-sudo-prompt && chown root:root /etc/sudoers.d/spinofin-sudo-prompt && chmod 0440 /etc/sudoers.d/spinofin-sudo-prompt'
     echo "Rebuilt. Re-run 'ujust setup-metasploit' to reinitialize the database."
 
 # Initialize the Metasploit PostgreSQL database inside the container (re-runnable)
