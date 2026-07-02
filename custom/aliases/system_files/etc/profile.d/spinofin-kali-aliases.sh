@@ -42,17 +42,17 @@ kali() {
         # path, which execs your shell as a login shell (verified in distrobox:
         # an empty command runs `$SHELL -l`), giving the full prompt + env.
         # --no-workdir enters at the container's $HOME rather than the host cwd
-        # (a rootful box maps that under /run/host), and the `|| true` mirror
+        # (a rootful box maps that under /run/host), and the `|| true` mirrors
         # enter-kali exactly: leaving via `exit`/Ctrl-D carries your LAST
         # command's exit code, which is not a failure of `kali` itself.
         distrobox enter --root --no-workdir spinofin-kali || true
-        return
+    else
+        # With args -> run that command in the container as your user, non-login
+        # and non-interactive. ~/.bashrc is NOT sourced on this path, which is
+        # why such tools must be reachable without a shell rc -- see the
+        # /usr/local/bin symlink note in setup-powerview (kali-container.just).
+        distrobox enter --root spinofin-kali -- "$@"
     fi
-    # With args -> run that command in the container as your user, non-login and
-    # non-interactive (unchanged). ~/.bashrc is NOT sourced on this path, which
-    # is why such tools must be reachable without a shell rc -- see the
-    # /usr/local/bin symlink note in setup-powerview (kali-container.just).
-    distrobox enter --root spinofin-kali -- "$@"
 }
 
 kalisudo() {
