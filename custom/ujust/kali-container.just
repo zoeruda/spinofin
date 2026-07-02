@@ -48,18 +48,18 @@ setup-kali:
     echo "First run is heavy: pulling kali-rolling + installing tools..."
     # The assemble is where the intermittent failure happens: the container's
     # own init prints "distrobox: Installing basic packages..." and then runs
-    # apt (base deps + this manifest's additional_packages) INSIDE the box. That
-    # output streams here but scrolls away, so a mid-run apt error is easy to
-    # miss. Capture the full combined output to a timestamped log so the exact
-    # error is preserved for next time, and ask distrobox for extra host-side
-    # detail via DBX_VERBOSE (honored by current distrobox; harmless if not).
+    # apt (base deps + this manifest's additional_packages) INSIDE the box.
+    # That raw output is long and not useful to watch live, so it goes ONLY to
+    # a timestamped log (never the terminal) -- DBX_VERBOSE asks distrobox for
+    # extra host-side detail in that log too (honored by current distrobox;
+    # harmless if not). On failure we print the tail here so the exact error
+    # is visible immediately, without having to go find the log first.
     log_dir="${HOME}/.local/share/spinofin/logs"
     mkdir -p "${log_dir}"
     log="${log_dir}/setup-kali-$(date +%Y%m%d-%H%M%S).log"
-    echo "Logging full output to: ${log}"
     set +e
-    DBX_VERBOSE=1 distrobox assemble create --file "{{ kali_ini }}" 2>&1 | tee "${log}"
-    rc=${PIPESTATUS[0]}
+    DBX_VERBOSE=1 distrobox assemble create --file "{{ kali_ini }}" >"${log}" 2>&1
+    rc=$?
     set -e
     if [ "${rc}" -ne 0 ]; then
         echo "" >&2
@@ -259,16 +259,17 @@ rebuild-kali:
     fi
     echo "Replacing '{{ kali_box }}' from {{ kali_ini }} ..."
     # Same intermittent failure point as setup-kali (the container's init runs
-    # apt after "distrobox: Installing basic packages..."). Capture the full
-    # combined output to a timestamped log and ask distrobox for extra host-side
-    # detail via DBX_VERBOSE, so the exact apt error is preserved for next time.
+    # apt after "distrobox: Installing basic packages..."). That raw output is
+    # long and not useful to watch live, so it goes ONLY to a timestamped log
+    # (never the terminal) -- DBX_VERBOSE asks distrobox for extra host-side
+    # detail in that log too. On failure we print the tail here so the exact
+    # error is visible immediately, without having to go find the log first.
     log_dir="${HOME}/.local/share/spinofin/logs"
     mkdir -p "${log_dir}"
     log="${log_dir}/rebuild-kali-$(date +%Y%m%d-%H%M%S).log"
-    echo "Logging full output to: ${log}"
     set +e
-    DBX_VERBOSE=1 distrobox assemble create --replace --file "{{ kali_ini }}" 2>&1 | tee "${log}"
-    rc=${PIPESTATUS[0]}
+    DBX_VERBOSE=1 distrobox assemble create --replace --file "{{ kali_ini }}" >"${log}" 2>&1
+    rc=$?
     set -e
     if [ "${rc}" -ne 0 ]; then
         echo "" >&2
