@@ -305,7 +305,14 @@ rebuild-kali:
     # container. Idempotent: it just overwrites the file.
     echo "Reconfiguring the container's sudo prompt to show its hostname..."
     distrobox enter --root {{ kali_box }} -- sudo bash -c 'printf "%s\n" "Defaults passprompt=\"[sudo] password for %p (on %h): \"" > /etc/sudoers.d/spinofin-sudo-prompt && chown root:root /etc/sudoers.d/spinofin-sudo-prompt && chmod 0440 /etc/sudoers.d/spinofin-sudo-prompt'
-    echo "Rebuilt. Re-run 'ujust setup-metasploit' to reinitialize the database."
+    echo "Rebuilt. --replace wipes everything not baked into the manifest, so"
+    echo "any container-side setup you'd done before is gone too. If you relied"
+    echo "on it, re-run what you need:"
+    echo "  ujust setup-metasploit   # re-initialize the Metasploit database"
+    echo "  ujust setup-bloodhound   # re-install + provision BloodHound CE"
+    echo "  ujust setup-powerview    # re-install powerview.py via container-local pipx"
+    echo "  ujust export-impacket    # re-surface impacket-* scripts to your host shell"
+    echo "  ujust toggle-nmap        # re-choose where nmap lives (container/host/both/none)"
 
 # Initialize the Metasploit PostgreSQL database inside the container (re-runnable)
 [group('Kali')]
@@ -329,7 +336,20 @@ setup-metasploit:
     #   inside the container.
     distrobox enter --root {{ kali_box }} -- bash -lc 'sudo service postgresql start; sudo msfdb init'
     echo ""
+    echo "Exporting msfconsole and msfvenom to the host..."
+    # Exported HERE rather than declaratively in the manifest: that way they
+    # only ever appear/refresh right after the database is actually ready,
+    # instead of at setup-kali/rebuild-kali time (when msfdb hasn't run yet).
+    # Same rootful distrobox-export path as export-impacket; `|| true` per
+    # export so one failing (e.g. already exported) doesn't abort the other.
+    # Idempotent: re-running just refreshes both wrapper scripts.
+    distrobox enter --root {{ kali_box }} -- bash -lc '
+        distrobox-export --bin /usr/bin/msfconsole --export-path "$HOME/.local/bin" >/dev/null 2>&1 || true
+        distrobox-export --bin /usr/bin/msfvenom --export-path "$HOME/.local/bin" >/dev/null 2>&1 || true
+    '
+    echo ""
     echo "Done. Launch Metasploit with:  msfconsole"
+    echo "Generate payloads with:        msfvenom"
     echo "(or, explicitly:  distrobox enter --root {{ kali_box }} -- msfconsole)"
 
 # Install BloodHound CE in the container and provision its databases (re-runnable)
@@ -474,7 +494,15 @@ link-wordlists:
     # host. So we stage REAL files only: relocate the seclists tree (its password
     # lists are real files) into $HOME and symlink /usr/share/seclists back, and
     # decompress rockyou into a ready-to-use plaintext list. We do NOT mirror the
-    # /usr/share/wordlists symlink farm. Idempotent. Re-run after `rebuild-kali`.
+    # /usr/share/wordlists symlink farm. Idempotent. Does NOT need a re-run after
+    # `rebuild-kali`: everything this recipe produces (~/wordlists/... and its
+    # target under ~/.local/share/spinofin/wordlists) lives under $HOME, which
+    # distrobox bind-mounts from the HOST -- --replace only recreates the
+    # container's own root filesystem, never touching $HOME. The one thing a
+    # rebuild resets is the container-internal /usr/share/seclists symlink this
+    # recipe points back at $HOME (a disk-dedup nicety so the ~1GB tree doesn't
+    # exist twice inside that one container) -- nothing host-facing depends on
+    # that, so it's fine left alone; re-running this recipe just re-establishes it.
     # Uses the shared rootful $HOME -- confirm on a real boot.
     distrobox enter --root {{ kali_box }} -- bash -lc 'set -euo pipefail; dest="$HOME/.local/share/spinofin/wordlists"; mkdir -p "$dest"; if [ -L /usr/share/seclists ]; then echo "seclists already linked"; elif [ -d /usr/share/seclists ]; then [ -e "$dest/seclists" ] || { echo "Copying seclists (one-time, ~1GB)..."; cp -a /usr/share/seclists "$dest/seclists"; }; sudo rm -rf /usr/share/seclists; sudo ln -sfn "$dest/seclists" /usr/share/seclists; echo "Linked /usr/share/seclists -> $dest/seclists"; else echo "WARN: /usr/share/seclists missing (run setup-kali first?)" >&2; fi; if [ -f /usr/share/wordlists/rockyou.txt.gz ]; then [ -f "$dest/rockyou.txt" ] || { echo "Decompressing rockyou.txt..."; gunzip -c /usr/share/wordlists/rockyou.txt.gz > "$dest/rockyou.txt"; }; elif [ -f /usr/share/wordlists/rockyou.txt ]; then cp -n /usr/share/wordlists/rockyou.txt "$dest/rockyou.txt"; else echo "WARN: rockyou not found under /usr/share/wordlists" >&2; fi; echo "Staged real files in $dest"'
     ln -sfn "$HOME/.local/share/spinofin/wordlists" "$HOME/wordlists"
@@ -522,7 +550,7 @@ setup-powerview:
     # pipx tools fully separate from host pipx tools without needing a second,
     # separate container $HOME (which would also break the OTHER recipes that
     # rely on the shared $HOME working as-is: export-impacket, link-wordlists,
-    # and the msfconsole export in setup-kali).
+    # and the msfconsole/msfvenom exports in setup-metasploit).
     #
     # /usr/local/bin SYMLINK: a non-interactive `kali powerview ...` call
     # (custom/aliases/system_files/etc/profile.d/spinofin-kali-aliases.sh)
@@ -536,7 +564,8 @@ setup-powerview:
     # /usr/local/bin is part of its own private root filesystem (not shared
     # with the host), this is still "only inside Kali" -- the host's own
     # /usr/local/bin is an entirely separate, untouched directory.
-    # Idempotent: pipx install --force and ln -sf handle re-runs cleanly.
+    # Idempotent: pipx install --force, ln -sf, and the export below all
+    # handle re-runs cleanly.
     distrobox enter --root {{ kali_box }} -- bash -lc '
         set -euo pipefail
         export PIPX_HOME="/opt/spinofin/pipx"
@@ -545,11 +574,18 @@ setup-powerview:
         sudo chown -R "$(id -u):$(id -g)" "$PIPX_HOME"
         pipx install --force "git+https://github.com/aniqfakhrul/powerview.py"
         sudo ln -sf "$PIPX_BIN_DIR/powerview" /usr/local/bin/powerview
+        # Export the /usr/local/bin symlink (not the PIPX_BIN_DIR target
+        # directly) to the host, same rootful distrobox-export path as
+        # export-impacket and the setup-metasploit exports. Only possible
+        # failure here is a re-export of an identical wrapper, hence || true.
+        distrobox-export --bin /usr/local/bin/powerview --export-path "$HOME/.local/bin" >/dev/null 2>&1 || true
     '
     echo ""
-    echo "Done. powerview is now on PATH everywhere inside the container:"
-    echo "  ujust enter-kali   # then: powerview --help"
-    echo "  kali powerview --help   # using the kali alias, from your host shell"
+    echo "Done. powerview is now on PATH everywhere inside the container, AND"
+    echo "exported straight to your host shell:"
+    echo "  powerview --help        # from your host shell directly"
+    echo "  kali powerview --help   # equivalent, using the kali alias"
+    echo "  ujust enter-kali        # then: powerview --help"
 
 # Remove the Kali toolbox container entirely
 [group('Kali')]
