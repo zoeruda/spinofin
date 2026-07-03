@@ -46,25 +46,31 @@ setup-kali:
     fi
     echo "Assembling '{{ kali_box }}' from {{ kali_ini }}"
     echo "First run is heavy: pulling kali-rolling + installing tools..."
-    # The assemble is where the intermittent failure happens: the container's
-    # own init prints "distrobox: Installing basic packages..." and then runs
-    # apt (base deps + this manifest's additional_packages) INSIDE the box.
-    # That raw output is long and not useful to watch live, so it goes ONLY to
-    # a timestamped log (never the terminal) -- DBX_VERBOSE asks distrobox for
-    # extra host-side detail in that log too (honored by current distrobox;
-    # harmless if not). On failure we print the tail here so the exact error
-    # is visible immediately, without having to go find the log first.
-    log_dir="${HOME}/.local/share/spinofin/logs"
-    mkdir -p "${log_dir}"
-    log="${log_dir}/setup-kali-$(date +%Y%m%d-%H%M%S).log"
+    # distrobox prints its own concise progress to the terminal here (the
+    # "distrobox: Installing basic packages..." / "[ OK ]" lines) -- we let it
+    # through untouched, so the console looks exactly like a normal distrobox
+    # run. The catch: distrobox DISCARDS the container's raw apt output before
+    # it reaches that stream, so when apt fails it only says "Container Setup
+    # Failure!" with no detail. So ON FAILURE we pull the container's FULL raw
+    # init log (every apt line + the real error) straight from podman's own log
+    # store -- the one place that detail survives distrobox's filtering -- and
+    # print its tail so the exact error is visible immediately.
     set +e
-    DBX_VERBOSE=1 distrobox assemble create --file "{{ kali_ini }}" >"${log}" 2>&1
+    distrobox assemble create --file "{{ kali_ini }}"
     rc=$?
     set -e
     if [ "${rc}" -ne 0 ]; then
         echo "" >&2
         echo "ERROR: assembling '{{ kali_box }}' failed (exit ${rc})." >&2
-        echo "Full output was saved to: ${log}" >&2
+        # Rootful box -> its podman container lives in root's storage, so the
+        # logs need `sudo podman` (assumes podman, Bluefin's default). Read the
+        # log BEFORE the cleanup below removes the container. Best-effort: if the
+        # container was never created there is simply nothing to read.
+        log_dir="${HOME}/.local/share/spinofin/logs"
+        mkdir -p "${log_dir}"
+        log="${log_dir}/setup-kali-$(date +%Y%m%d-%H%M%S).log"
+        sudo podman logs {{ kali_box }} >"${log}" 2>&1 || true
+        echo "Full container log saved to: ${log}" >&2
         echo "----- last 40 lines of the log -----" >&2
         tail -n 40 "${log}" >&2 || true
         echo "------------------------------------" >&2
@@ -259,22 +265,25 @@ rebuild-kali:
     fi
     echo "Replacing '{{ kali_box }}' from {{ kali_ini }} ..."
     # Same intermittent failure point as setup-kali (the container's init runs
-    # apt after "distrobox: Installing basic packages..."). That raw output is
-    # long and not useful to watch live, so it goes ONLY to a timestamped log
-    # (never the terminal) -- DBX_VERBOSE asks distrobox for extra host-side
-    # detail in that log too. On failure we print the tail here so the exact
-    # error is visible immediately, without having to go find the log first.
-    log_dir="${HOME}/.local/share/spinofin/logs"
-    mkdir -p "${log_dir}"
-    log="${log_dir}/rebuild-kali-$(date +%Y%m%d-%H%M%S).log"
+    # apt after "distrobox: Installing basic packages..."). We let distrobox
+    # print its normal progress to the console; distrobox discards the raw apt
+    # output, so ON FAILURE we pull the container's FULL raw init log (every apt
+    # line + the real error) straight from podman's own log store and print its
+    # tail. See setup-kali for the fuller rationale.
     set +e
-    DBX_VERBOSE=1 distrobox assemble create --replace --file "{{ kali_ini }}" >"${log}" 2>&1
+    distrobox assemble create --replace --file "{{ kali_ini }}"
     rc=$?
     set -e
     if [ "${rc}" -ne 0 ]; then
         echo "" >&2
         echo "ERROR: rebuilding '{{ kali_box }}' failed (exit ${rc})." >&2
-        echo "Full output was saved to: ${log}" >&2
+        # Rootful box -> logs need `sudo podman` (assumes podman, Bluefin's
+        # default). Best-effort; nothing to read if the container is absent.
+        log_dir="${HOME}/.local/share/spinofin/logs"
+        mkdir -p "${log_dir}"
+        log="${log_dir}/rebuild-kali-$(date +%Y%m%d-%H%M%S).log"
+        sudo podman logs {{ kali_box }} >"${log}" 2>&1 || true
+        echo "Full container log saved to: ${log}" >&2
         echo "----- last 40 lines of the log -----" >&2
         tail -n 40 "${log}" >&2 || true
         echo "------------------------------------" >&2
