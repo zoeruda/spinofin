@@ -222,23 +222,25 @@ jobs:
           default-tag: ${{ steps.generate-tags.outputs.default-tag }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # OPTIONAL: Sign and attest (SLSA Build L2 provenance)
-      # Bluefin pattern: keyless OIDC signing via Fulcio.
-      # Uncomment to enable. Requires 'id-token: write' permission (already granted).
-      # Non-fatal — signing failures never block image publishing.
-
-      # - name: Sign and publish
-      #   if: github.event_name != 'pull_request'
-      #   continue-on-error: true
-      #   uses: projectbluefin/actions/bootc-build/sign-and-publish@6231015b336556d2ff0adc1d1e59514bf19dcb42 # v1
-      #   with:
-      #     image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}
-      #     digest: ${{ steps.push.outputs.digest }}
-      #     signing-mode: keyless
-      #     generate-sbom: false
-      #     push-attestation: true
-      #     certificate-identity-regexp: https://github.com/${{ github.repository }}/.github/workflows/
-      #     github-token: ${{ secrets.GITHUB_TOKEN }}
+      # Sign and attest (SLSA Build L2 provenance) -- keyless OIDC via Fulcio.
+      # STABLE ONLY: gated to `main` so only :stable images are signed. :testing
+      # images (built from the testing branch) are intentionally left unsigned.
+      # Scheduled/dispatch runs on main are ref=refs/heads/main, so they sign too.
+      # Requires 'id-token: write' (granted above).
+      # Non-fatal: signing runs AFTER push, so a failure never blocks or
+      # unpublishes the image -- it only marks the run failed.
+      - name: Sign and publish
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: projectbluefin/actions/bootc-build/sign-and-publish@6231015b336556d2ff0adc1d1e59514bf19dcb42 # v1
+        with:
+          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}
+          digest: ${{ steps.push.outputs.digest }}
+          signing-mode: keyless
+          generate-sbom: false
+          push-attestation: true
+          certificate-identity-regexp: https://github.com/${{ github.repository }}/.github/workflows/
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build telemetry summary
         if: steps.detect-changes.outputs.should_build == 'true' || github.event_name != 'pull_request'

@@ -1,0 +1,67 @@
+name: Validate Aliases
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "custom/aliases/**"
+      # Re-run when the validator itself changes, so a workflow edit is
+      # exercised against the committed alias files on its own PR.
+      - ".github/workflows/validate-aliases.yml"
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Validate alias shell files
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Validating alias shell files in custom/aliases/ ..."
+
+          # These files are SOURCED into every interactive shell via
+          # /etc/profile.d (see custom/aliases/README.md), so a syntax error
+          # breaks terminal startup on the booted image. We validate each *.sh:
+          #   1. `bash -n` -- it must parse.
+          #   2. `shellcheck --shell=bash` -- static analysis. The files have no
+          #      shebang (they are sourced, not executed), so --shell=bash tells
+          #      shellcheck the dialect and suppresses the missing-shebang note.
+          # shellcheck is preinstalled on the ubuntu-latest runner image.
+
+          mapfile -t files < <(find custom/aliases -type f -name '*.sh' | sort)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No *.sh found under custom/aliases/ -- nothing to validate."
+            exit 0
+          fi
+
+          fail=0
+          for f in "${files[@]}"; do
+            echo "::group::$f"
+
+            if bash -n "$f"; then
+              echo "  ok    bash -n (parses)"
+            else
+              echo "  FAIL  bash -n: syntax error in $f"
+              fail=1
+            fi
+
+            if shellcheck --shell=bash "$f"; then
+              echo "  ok    shellcheck"
+            else
+              echo "  FAIL  shellcheck findings in $f"
+              fail=1
+            fi
+
+            echo "::endgroup::"
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo ""
+            echo "Alias validation failed -- see the FAIL lines above."
+            exit 1
+          fi
+          echo ""
+          echo "All alias shell files parse and pass shellcheck."

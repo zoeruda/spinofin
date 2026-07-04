@@ -4,6 +4,8 @@
 #   kali <cmd>      -- run <cmd> in the spinofin-kali container as YOUR USER
 #                       (no args -> interactive shell, same as `ujust enter-kali`)
 #   kalisudo <cmd>  -- same, but as ROOT in the container
+#   iskali          -- report whether the spinofin-kali container exists
+#                       (exit 0 = present, non-zero = not created yet)
 #
 # Plain functions (not `alias`) so multi-word/quoted arguments forward
 # correctly.
@@ -58,4 +60,21 @@ kali() {
 kalisudo() {
     _spinofin_kali_check || return 1
     distrobox enter --root spinofin-kali -- sudo "$@"
+}
+
+# iskali -- report whether the shared Kali toolbox container exists, without
+# entering it. Uses the same detection as the guard above. Exit 0 if present,
+# non-zero if not, so it works in scripts (`iskali && kali nmap ...`) as well
+# as interactively. `return`, not `exit`: this is sourced into your shell.
+iskali() {
+    if ! command -v distrobox >/dev/null 2>&1; then
+        echo "spinofin: distrobox not found on host." >&2
+        return 2
+    fi
+    if distrobox list --root 2>/dev/null | grep -q "spinofin-kali"; then
+        echo "spinofin-kali: present"
+        return 0
+    fi
+    echo "spinofin-kali: not created yet -- run 'ujust setup-kali'"
+    return 1
 }

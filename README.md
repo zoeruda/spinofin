@@ -28,7 +28,7 @@ sudo bootc switch ghcr.io/zoeruda/spinofin:stable
 sudo systemctl reboot
 ```
 
-Image signing is disabled by default (see [Optional: Enable Image Signing](#optional-enable-image-signing)). Once you've enabled cosign signing for your build, add `--enforce-container-sigpolicy` to the `bootc switch` command to require a valid signature on each pull.
+spinofin's `:stable` images (built from `main`) are signed with keyless cosign/OIDC via Fulcio; `:testing` images are intentionally left unsigned. To require a valid signature on each pull, add `--enforce-container-sigpolicy` to the `bootc switch` command. If you're forking this repo, see [Optional: Enable Image Signing](#optional-enable-image-signing) to set it up for your own registry.
 
 ### 3. Get set up (ujust recipes)
 
@@ -98,7 +98,9 @@ through Homebrew or Flatpak instead:
   - **Password cracking (offline, CPU/GPU, unprivileged):** `john-jumbo`, `hashcat`.
   - **Online login attacks (connect-based, unprivileged):** `hydra`, `ncrack`.
   - **Port scanning:** `rustscan` (async connect-scan port finder). **Important:** rustscan's default behaviour auto-execs `nmap` after the port sweep; since `nmap` lives only in the container now, use `rustscan -a <target> --scripts none` to get ports only, then hand off to the container's nmap via `kali nmap -sV -sC -p <ports> <target>`.
-  - **Exploit reference & pivoting:** `exploitdb` (`searchsploit`), `proxychains-ng`, `netcat`, `rlwrap`.
+  - **Exploit reference:** `exploitdb` (`searchsploit`).
+  - **Pivoting / proxying:** `proxychains-ng`, `chisel-tunnel` (installs the `chisel` binary — fast TCP/UDP tunnel over HTTP for port-forwarding through a foothold).
+  - **Networking utilities:** `netcat`, `rlwrap` (readline wrapper for tools lacking line-editing, e.g. raw `nc` shells).
 
   Which tools go host-side (here) vs. into the Kali container is governed by the **host-vs-container rubric** documented at the top of [`custom/brew/default.Brewfile`](custom/brew/default.Brewfile). Raw-socket / privileged / Kali-only / heavy-dependency tools (e.g. `masscan`, `naabu`, `nmap`) stay in the container; Python-only tools without a clean formula go in the `pipx` bucket below. `pipx` itself is installed via this Brewfile to bootstrap that bucket.
 - **CLI Tools (pipx)**: Python-only tools with no clean Homebrew formula, declared in [`custom/pipx/default.pipx`](custom/pipx/default.pipx) and installed at runtime via `ujust install-pipx-tools` into the user's isolated pipx venvs (same no-layering posture as brew):
@@ -276,7 +278,7 @@ Important: Change `finpilot` to your repository name in these 7 files:
 
 Your first build will start automatically!
 
-Note: Image signing is disabled by default. Your images will build successfully without any signing keys. Once you're ready for production, see "Optional: Enable Image Signing" below.
+Note: spinofin's `:stable` (main) images are signed with keyless cosign/OIDC — no signing keys or secrets to manage. `:testing` images are left unsigned by design. Forks inherit this enabled workflow; see "Optional: Enable Image Signing" below for how it works.
 
 ### 4. Enable Renovate (Required)
 
@@ -351,7 +353,7 @@ sudo systemctl reboot
 
 ## Optional: Enable Image Signing
 
-Image signing is disabled by default to let you start building immediately. However, signing is strongly recommended for production use.
+**spinofin already has signing enabled** for `:stable` (main) images — see the "Sign and publish" step in `.github/workflows/build-image.yml`, gated to the `main` branch so `:testing` stays unsigned. The steps below explain how it works and are what you'd adjust if you fork this repo for your own registry. Signing is strongly recommended for production use.
 
 ### Why Sign Images?
 
@@ -386,12 +388,12 @@ Ready to take your custom OS to production? Enable these features for enhanced s
 
 ### Production Checklist
 
-- [ ] **Enable Image Signing** (Recommended)
+- [x] **Enable Image Signing** (Recommended)
   - Provides cryptographic verification of your images
   - Prevents tampering and ensures authenticity
   - Uses keyless OIDC signing via GitHub Actions — no keys or secrets required
   - See "Optional: Enable Image Signing" section above for setup instructions
-  - Status: **Disabled by default** to allow immediate testing
+  - Status: **Enabled** — `:stable` (main) images are signed; `:testing` is intentionally left unsigned
 
 - [ ] **Enable Image Rechunking** (Recommended)
   - Optimizes bootc image layers for better update performance
@@ -539,7 +541,7 @@ This template provides security features for production use:
 - Automated security updates via Renovate
 - Build provenance tracking
 
-These security features are disabled by default to allow immediate testing. When you're ready for production, see the "Love Your Image? Let's Go to Production" section above to enable them.
+Image signing is enabled for `:stable` (main) images; the other features listed are opt-in. When you're ready to enable the rest, see the "Love Your Image? Let's Go to Production" section above.
 
 ## Troubleshooting
 
