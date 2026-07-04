@@ -395,20 +395,16 @@ Ready to take your custom OS to production? Enable these features for enhanced s
   - See "Optional: Enable Image Signing" section above for setup instructions
   - Status: **Enabled** — `:stable` (main) images are signed; `:testing` is intentionally left unsigned
 
-- [ ] **Enable Image Rechunking** (Recommended)
+- [x] **Enable Image Rechunking** (Recommended)
   - Optimizes bootc image layers for better update performance
   - Reduces update sizes by 5-10x when combined with package cadence data
   - Improves download resumability with evenly sized layers
-  - To enable:
-    1. Edit `.github/workflows/build-image.yml`
-    2. Find the "OPTIONAL: Rechunking" section
-    3. Uncomment the `bootc-build/chunka` step
-  - For optimal results, also add `bootc-build/apply-pkg-intervals` and a `pkg-cadence.yml` workflow
-  - Status: **Not enabled by default** (optional optimization)
+  - Status: **Enabled** — the `bootc-build/chunka` step runs on every non-PR build (`:stable` and `:testing`), rechunking to `max-layers: 128`
+  - Not yet added: `bootc-build/apply-pkg-intervals` + a `pkg-cadence.yml` workflow (the package-cadence grouping that unlocks the larger delta savings) — see below
 
 #### Adding Image Rechunking
 
-After building your bootc image, add a rechunk step before pushing to the registry. The template ships with a commented `bootc-build/chunka` step in `.github/workflows/build-image.yml`:
+After building the bootc image, a rechunk step runs before the image is pushed to the registry. spinofin has this enabled in `.github/workflows/build-image.yml` (if you fork this repo, this is the step to keep or adjust):
 
 ```yaml
 - name: Rechunk image
@@ -420,7 +416,7 @@ After building your bootc image, add a rechunk step before pushing to the regist
     max-layers: 128
 ```
 
-This uses [chunkah](https://github.com/coreos/chunkah) to reorganize OCI layers without rpm-ostree. Renovate will keep the action updated once it is uncommented.
+This uses [chunkah](https://github.com/coreos/chunkah) to reorganize OCI layers without rpm-ostree. Renovate keeps the action pinned and updated.
 
 **Parameters:**
 
