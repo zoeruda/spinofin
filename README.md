@@ -395,35 +395,38 @@ Ready to take your custom OS to production? Enable these features for enhanced s
   - See "Optional: Enable Image Signing" section above for setup instructions
   - Status: **Enabled** — `:stable` (main) images are signed; `:testing` is intentionally left unsigned
 
-- [x] **Enable Image Rechunking** (Recommended)
+- [ ] **Enable Image Rechunking** (Recommended — but **deferred** on this base; see note)
   - Optimizes bootc image layers for better update performance
   - Reduces update sizes by 5-10x when combined with package cadence data
   - Improves download resumability with evenly sized layers
-  - Status: **Enabled** — the `bootc-build/chunka` step runs on every non-PR build (`:stable` and `:testing`), rechunking to `max-layers: 128`
-  - Not yet added: `bootc-build/apply-pkg-intervals` + a `pkg-cadence.yml` workflow (the package-cadence grouping that unlocks the larger delta savings) — see below
+  - Status: **Deferred** — neither OCI-native rechunker works on spinofin's full-Bluefin base (`chunka` overflows the kernel arg/env limit; `bootc-base-imagectl` isn't in the base). Not blocking — it's an optimization, not a correctness requirement. See "Adding Image Rechunking" below for the full rationale and revisit conditions.
 
 #### Adding Image Rechunking
 
-After building the bootc image, a rechunk step runs before the image is pushed to the registry. spinofin has this enabled in `.github/workflows/build-image.yml` (if you fork this repo, this is the step to keep or adjust):
+Rechunking reorganizes OCI layers so OTA updates download only what changed. It is an optional optimization, and **spinofin currently leaves it disabled** — see the commented-out block in `.github/workflows/build-image.yml`. The reason is specific to the full-Bluefin base this image is built on; a fork on a leaner base may be able to enable it directly.
+
+**Why it's disabled here.** The finpilot template ships a `bootc-build/chunka` step (which wraps [chunkah](https://github.com/coreos/chunkah)):
 
 ```yaml
 - name: Rechunk image
   if: github.event_name != 'pull_request'
   id: rechunk-image
-  uses: projectbluefin/actions/bootc-build/chunka@6231015b336556d2ff0adc1d1e59514bf19dcb42 # v1
+  uses: projectbluefin/actions/bootc-build/chunka@... # pinned by Renovate
   with:
     source-image: localhost/${{ env.IMAGE_NAME }}:${{ env.DEFAULT_TAG }}
     max-layers: 128
 ```
 
-This uses [chunkah](https://github.com/coreos/chunkah) to reorganize OCI layers without rpm-ostree. Renovate keeps the action pinned and updated.
+`chunka` re-applies base-image metadata by passing the entire `podman inspect` output to `sudo` in the `CHUNKAH_CONFIG_STR` environment variable. spinofin's full-Bluefin base has a large image config (a long layer `History`), so that single string exceeds the kernel's fixed 128 KiB argument/environment limit and `sudo` fails with `E2BIG` ("Argument list too long", exit 126). This is a hard kernel limit — it can't be tuned around, and the action exposes no input to change how the config is transported. A leaner base (like finpilot's default) stays under the limit, so this step works there; on a full-Bluefin base it does not.
 
-**Parameters:**
+**Alternatives considered:**
 
-- `max-layers`: Maximum number of layers for the rechunked image (128 is a typical bootc default)
-- `source-image`: Local image reference to rechunk
+- `bootc-base-imagectl rechunk` rechunks in-image (no env var, so no `E2BIG`), but `/usr/libexec/bootc-base-imagectl` is not present in `ghcr.io/ublue-os/bluefin:stable`, so it can't run.
+- [`hhd-dev/rechunk`](https://github.com/hhd-dev/rechunk) (the ublue/Bazzite rechunker) works on this image family, but it is OSTree/rpm-ostree-based, which conflicts with spinofin's "no rpm-ostree" stance and the Track-B (GNOME OS bootc) migration target.
 
-**For optimal OTA deltas**, also add `bootc-build/apply-pkg-intervals` before the rechunk step and create a `.github/workflows/pkg-cadence.yml` workflow that calls `projectbluefin/actions/.github/workflows/reusable-pkg-cadence.yml@v1`. This groups packages by update cadence (weekly, monthly, quarterly, yearly) so a typical update only downloads layers that actually changed. Without it, chunkah still works but uses default layer grouping.
+**When to revisit:** if `chunka`/chunkah upstream adds file-based config passing (the standard fix for `E2BIG`), or if the base image starts shipping `bootc-base-imagectl`. Until then, rechunking stays off — it's an optimization, not a correctness requirement, so nothing else depends on it.
+
+**Once rechunking is enabled (for optimal OTA deltas)**, also add `bootc-build/apply-pkg-intervals` before the rechunk step and create a `.github/workflows/pkg-cadence.yml` workflow that calls `projectbluefin/actions/.github/workflows/reusable-pkg-cadence.yml@v1`. This groups packages by update cadence (weekly, monthly, quarterly, yearly) so a typical update only downloads layers that actually changed. Without it, chunkah still works but uses default layer grouping.
 
 **References:**
 
