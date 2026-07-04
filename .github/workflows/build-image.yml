@@ -176,23 +176,24 @@ jobs:
           allow-write: ${{ github.event_name != 'pull_request' && 'true' || 'false' }}
           cache-bust: ${{ hashFiles('**/Containerfile') }}
 
-      # OPTIONAL: Rechunking (OCI-native, no rpm-ostree)
-      # Rechunking improves OTA delta performance by reorganizing layers.
-      # Uncomment the step below to enable it. Renovate will keep the action
-      # pinned and up to date automatically once it is uncommented.
+      # Rechunking (OCI-native, no rpm-ostree) -- reorganizes layers by content
+      # so OTA updates only download what actually changed. Runs on every non-PR
+      # build (both :stable and :testing) so testing faithfully mirrors stable's
+      # update behavior. Applied AFTER build, BEFORE tag/push: chunka rewrites
+      # localhost/${IMAGE_NAME}:${DEFAULT_TAG} in place, so the Tag/Push steps
+      # below need no changes. Renovate keeps the action pinned/updated.
       #
       # For optimal layer grouping (packages sorted by update cadence), also add
-      # the bootc-build/apply-pkg-intervals step before rechunking and create a
-      # .github/workflows/pkg-cadence.yml workflow. See:
-      #   https://github.com/projectbluefin/actions/tree/main/bootc-build/chunka
+      # the bootc-build/apply-pkg-intervals step before this one and create a
+      # .github/workflows/pkg-cadence.yml. Not enabled yet -- see:
       #   https://github.com/projectbluefin/actions/tree/main/bootc-build/apply-pkg-intervals
-      # - name: Rechunk image
-      #   if: github.event_name != 'pull_request'
-      #   id: rechunk-image
-      #   uses: projectbluefin/actions/bootc-build/chunka@6231015b336556d2ff0adc1d1e59514bf19dcb42 # v1
-      #   with:
-      #     source-image: localhost/${{ env.IMAGE_NAME }}:${{ env.DEFAULT_TAG }}
-      #     max-layers: 128
+      - name: Rechunk image
+        if: github.event_name != 'pull_request'
+        id: rechunk-image
+        uses: projectbluefin/actions/bootc-build/chunka@6231015b336556d2ff0adc1d1e59514bf19dcb42 # v1
+        with:
+          source-image: localhost/${{ env.IMAGE_NAME }}:${{ env.DEFAULT_TAG }}
+          max-layers: 128
 
       - name: Tag images
         if: github.event_name != 'pull_request'
@@ -232,7 +233,7 @@ jobs:
       - name: Sign and publish
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         continue-on-error: true
-        uses: projectbluefin/actions/bootc-build/sign-and-publish@6231015b336556d2ff0adc1d1e59514bf19dcb42 # v1
+        uses: projectbluefin/actions/bootc-build/sign-and-publish@d8f871c0ca7a868339d3c175200a7319492473c7 # v1
         with:
           image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}
           digest: ${{ steps.push.outputs.digest }}
