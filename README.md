@@ -98,7 +98,9 @@ through Homebrew or Flatpak instead:
   - **Password cracking (offline, CPU/GPU, unprivileged):** `john-jumbo`, `hashcat`.
   - **Online login attacks (connect-based, unprivileged):** `hydra`, `ncrack`.
   - **Port scanning:** `rustscan` (async connect-scan port finder). **Important:** rustscan's default behaviour auto-execs `nmap` after the port sweep; since `nmap` lives only in the container now, use `rustscan -a <target> --scripts none` to get ports only, then hand off to the container's nmap via `kali nmap -sV -sC -p <ports> <target>`.
-  - **Exploit reference & pivoting:** `exploitdb` (`searchsploit`), `proxychains-ng`, `netcat`, `rlwrap`.
+  - **Exploit reference:** `exploitdb` (`searchsploit`).
+  - **Pivoting / proxying:** `proxychains-ng`, `chisel-tunnel` (installs the `chisel` binary — fast TCP/UDP tunnel over HTTP for port-forwarding through a foothold).
+  - **Networking utilities:** `netcat`, `rlwrap` (readline wrapper for tools lacking line-editing, e.g. raw `nc` shells).
 
   Which tools go host-side (here) vs. into the Kali container is governed by the **host-vs-container rubric** documented at the top of [`custom/brew/default.Brewfile`](custom/brew/default.Brewfile). Raw-socket / privileged / Kali-only / heavy-dependency tools (e.g. `masscan`, `naabu`, `nmap`) stay in the container; Python-only tools without a clean formula go in the `pipx` bucket below. `pipx` itself is installed via this Brewfile to bootstrap that bucket.
 - **CLI Tools (pipx)**: Python-only tools with no clean Homebrew formula, declared in [`custom/pipx/default.pipx`](custom/pipx/default.pipx) and installed at runtime via `ujust install-pipx-tools` into the user's isolated pipx venvs (same no-layering posture as brew):
