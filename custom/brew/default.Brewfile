@@ -134,6 +134,10 @@ brew "exploitdb"     # local Exploit-DB archive + `searchsploit` lookup
 # --- Pivoting / proxying (Phase 3) -----------------------------------------
 brew "proxychains-ng" # route tool traffic through a SOCKS/HTTP proxy chain
                       # (provides the `proxychains4` binary)
+brew "chisel-tunnel"  # fast TCP/UDP tunnel over HTTP for pivoting/port-forwarding
+                      # (jpillora/chisel; provides the `chisel` binary -- the
+                      # formula is named `chisel-tunnel` because `chisel` is a
+                      # different, macOS-only tool)
 
 # --- Networking utilities (Phase 3) ----------------------------------------
 brew "netcat"        # the classic network swiss-army knife (banner grabbing,
