@@ -1,7 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:best-practices", ":enablePreCommit"],
-  "baseBranches": ["staging"],
+  "baseBranchPatterns": [
+    "staging"
+  ],
   "prHourlyLimit": 10,
   "prConcurrentLimit": 20,
   "recreateWhen": "always",
