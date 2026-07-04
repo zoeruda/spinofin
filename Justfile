@@ -156,6 +156,18 @@ build $target_image=IMAGE_NAME $tag=DEFAULT_TAG:
     LABELS+=("--label" "io.artifacthub.package.deprecated=false")
     LABELS+=("--label" "containers.bootc=1")
 
+    # OCI manifest annotations. GitHub Container Registry derives the package-page
+    # description from the `org.opencontainers.image.description` *annotation* on
+    # the pushed manifest/index -- NOT from the config label above (that label is
+    # inherited-through/ignored for the page, which is why the base Bluefin
+    # description showed instead). Setting it here is what changes the text on
+    # https://github.com/${IMAGE_VENDOR}/${target_image}/pkgs/container/${target_image}.
+    # NOTE (unverified by build): confirm this annotation survives to the pushed
+    # index on the first CI build; if rechunk/push re-wraps the index and strips
+    # it, set it on the push step instead. See README production notes.
+    ANNOTATIONS=()
+    ANNOTATIONS+=("--annotation" "org.opencontainers.image.description=A declarative image-based penetration testing distribution")
+
     # Registry layer cache - speeds up rebuilds by reusing unchanged layers from GHCR
     # Cache write (REGISTRY_CACHE_WRITE=1) is set by CI for non-PR builds only
     # PR builds and local builds are read-only to prevent cache poisoning
@@ -171,6 +183,7 @@ build $target_image=IMAGE_NAME $tag=DEFAULT_TAG:
     ${PODMAN} build \
         "${BUILD_ARGS[@]}" \
         "${LABELS[@]}" \
+        "${ANNOTATIONS[@]}" \
         "${CACHE_ARGS[@]}" \
         --pull=newer \
         --tag "${target_image}:${tag}" \
