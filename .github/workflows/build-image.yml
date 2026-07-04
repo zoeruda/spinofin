@@ -11,7 +11,8 @@ name: Build and Push Image
 on:
   push:
     branches:
-      - main
+      - main # publishes :stable
+      - testing # publishes :testing
     paths-ignore:
       - "**.md"
       - ".github/workflows/*validate*.yml"
@@ -55,6 +56,15 @@ jobs:
         run: |
           echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}" >> ${GITHUB_ENV}
           echo "IMAGE_NAME=${IMAGE_NAME,,}" >> ${GITHUB_ENV}
+          # Stream/tag is derived from the branch: the testing branch publishes
+          # the :testing stream, everything else (main, scheduled, dispatch)
+          # publishes :stable. This overrides the workflow-level DEFAULT_TAG for
+          # all subsequent steps via $GITHUB_ENV.
+          if [[ "${GITHUB_REF}" == "refs/heads/testing" ]]; then
+            echo "DEFAULT_TAG=testing" >> ${GITHUB_ENV}
+          else
+            echo "DEFAULT_TAG=stable" >> ${GITHUB_ENV}
+          fi
 
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -148,6 +158,12 @@ jobs:
           # preserved untouched in case PR builds are ever re-enabled (see the
           # comment at the top of this file), so PR-only tags are never
           # accidentally promoted to `stable`.
+          #
+          # On the `testing` branch, stream-name is `testing` (see DEFAULT_TAG in
+          # the Prepare step). The action only special-cases the literal `stable`
+          # stream, so a `testing` stream simply emits `testing` and the dated
+          # `testing-<version>` tags -- the workflow_dispatch override is inert
+          # for it and needs no separate handling.
           event-name: ${{ github.event_name == 'pull_request' && 'pull_request' || 'workflow_dispatch' }}
           pr-number: ${{ github.event.number }}
 
@@ -189,7 +205,7 @@ jobs:
                           "${ALIAS_TAGS}"
 
       - name: Login to GitHub Container Registry
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/testing')
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
         with:
           registry: ghcr.io
@@ -197,7 +213,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push to GHCR
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/testing')
         id: push
         uses: projectbluefin/actions/bootc-build/push-image@d8f871c0ca7a868339d3c175200a7319492473c7 # v1
         with:
