@@ -1,93 +1,18 @@
-# default.pipx -- declarative list of Python applications installed via pipx.
-#
-# This is the HOST-SIDE bucket for Python-only pentest tools (Phase 3). pipx
-# installs each app into its own isolated venv under ~/.local with a shim on
-# ~/.local/bin (already on PATH in Bluefin), so installs live in the user's
-# writable layer -- NOT baked into the image, NOT run at boot. Same no-layering
-# posture as brew, and Track-B-friendly (pipx + python3 exist on the GNOME OS
-# bootc base too).
-#
-# WHEN A TOOL BELONGS HERE (vs. the Kali container):
-#   * It is a Python CLI app with no clean homebrew-core formula, AND
-#   * it installs WITHOUT system build dependencies -- i.e. it ships a pure
-#     `py3-none-any` wheel or otherwise needs no apt/dnf -devel headers.
-# A Python tool that needs build headers (e.g. anything pulling `gssapi`, which
-# needs libkrb5-dev/krb5-devel) can NOT be installed host-side under the
-# no-layering policy -- it goes in the Kali container (apt-installable there).
-#
-# FORMAT: one `pipx install` spec per line -- a PyPI name, `name==version`, or
-# a `git+https://...` URL. Comments must be on their OWN line (a leading `#`);
-# do not put `#` comments after a spec, because git URLs may contain a
-# `#egg=`/`#subdirectory=` fragment. Installed by: ujust install-pipx-tools
+# spinofin host-side Python tools -- installed with: ujust install-pipx-tools
+# Each app installs into its own pipx venv under ~/.local (not baked into the
+# image). One spec per line (PyPI name, name==version, or git+https URL).
+# Comments must be on their OWN line -- a git URL may contain a `#egg=` fragment,
+# and the installer treats anything after leading whitespace as the full spec.
 
-# AD privesc swiss-army-knife (CravateRouge/bloodyAD). Pure-Python wheel
-# (py3-none-any), no system build deps -> clean host install.
 bloodyAD
-
-# BloodHound ingestor that collects over ADWS/SOAP (the Python soaphound, NOT
-# the .NET FalconForce tool of the same name). Ships a py3-none-any wheel with
-# a `soaphound` console entry point. Its one real dependency is impacket, which
-# is pure-Python and whose only compiled transitive deps (cryptography via
-# pyOpenSSL, pycryptodomex) install from prebuilt manylinux wheels -- so NO
-# system build headers are needed. Crucially impacket does NOT pull gssapi, so
-# the libkrb5-dev problem that routed powerview.py to the container (below)
-# does not apply here. Verified against the sdist/PyPI 2026-06.
 soaphound
-
-# BloodHound's Active Directory ingestor for BHCE (NOT legacy bloodhound-python
-# -- only compatible with BloodHound CE). The CLI is `bloodhound-ce-python`;
-# the PyPI package is `bloodhound-ce`, which provides that entry point. Same
-# author/lineage as impacket, same shape as soaphound above: a py3-none-any
-# wheel whose deps (dnspython, impacket, ldap3, pyasn1, pycryptodome) are all
-# pure-Python or ship prebuilt manylinux wheels -- no gssapi, no build headers.
-# Verified against the sdist/PyPI 2026-06.
 bloodhound-ce
-
-# Web Application Firewall fingerprinting toolkit. Pure-Python (py3-none-any),
-# deps are requests/requests[socks] only -> clean host install. Not in
-# homebrew-core, hence pipx rather than brew.
 wafw00f
-
-# HTTP parameter discovery suite. Pure-Python; deps requests/dicttoxml/ratelimit,
-# no build headers. Has a brew formula but with NO Linux bottle, so per the
-# host-side rubric it lands here (pipx) instead of brew.
 arjun
-
-# AD Certificate Services enumeration and exploitation toolkit (ly4k/Certipy).
-# Covers the full ESC1-ESC16 attack path family against AD CS. Pure Python
-# (py3-none-any wheel, verified against PyPI 2026-06). Deps are impacket,
-# ldap3, pyasn1, pycryptodome, cryptography -- all ship prebuilt manylinux
-# wheels, no system build headers required. Named `certipy-ad` on PyPI
-# (the older `certipy` package is a different, unrelated tool).
 certipy-ad
-
-# TLS/SSL analysis tool (nabla-c0d3/sslyze). Connects to servers and checks
-# ciphers, protocols, certificates, and known TLS vulns (Heartbleed, ROBOT,
-# CCS injection, CRIME, etc.). Uses nassl (a C OpenSSL wrapper), but nassl
-# ships prebuilt manylinux2014_x86_64 wheels for Python 3.10+ -- no build
-# headers needed on Bluefin / Fedora host. Distinct from the host-brew
-# `sslscan` (which does cipher enumeration only): sslyze does deeper protocol
-# analysis and structured JSON output useful for automated scanning pipelines.
 sslyze
-
-# Active Directory LDAP dumper (dirkjanm/ldapdomaindump). Enumerates users,
-# groups, computers, policies, and trusts from AD via LDAP and writes
-# HTML/JSON/grep-friendly output. Pure Python (deps: ldap3, dnspython, future
-# -- all py3-none-any or manylinux wheels, no build headers). Complements
-# BloodHound CE ingestors: ldapdomaindump gives quick human-readable output
-# without standing up Neo4j, useful for fast first-look at an AD environment.
 ldapdomaindump
 
-# --- Deliberately NOT host-side (documented per-tool decisions) -------------
-# powerview.py: needs the gssapi C extension, which requires BOTH libkrb5-dev
-#   (krb5 headers) and python3-dev (Python.h) at build time. gssapi ships no
-#   Linux manylinux wheels and always builds from source -- so host-side brew
-#   pipx cannot install it (no headers, no-layering policy). Routed to the
-#   Kali container instead, where libkrb5-dev, python3-dev, and pipx are all
-#   baked into additional_packages for exactly this purpose.
-#   Install it with: ujust setup-powerview
-#
-# wfuzz: only a stale Python-2 third-party brew tap exists and upstream is
-#   effectively abandoned on modern Python -- not pipx-installable host-side.
-#   Now baked directly into the container's additional_packages (apt) instead;
-#   see custom/distrobox/spinofin-kali.ini.
+# Not host-installable (need system build headers) -> Kali container instead:
+#   powerview.py -> ujust setup-powerview   (gssapi needs libkrb5-dev + python3-dev)
+#   wfuzz        -> baked into the container (no maintained host install)
