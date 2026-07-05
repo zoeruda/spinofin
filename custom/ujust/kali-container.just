@@ -314,7 +314,7 @@ rebuild-kali:
     echo "  ujust export-impacket    # re-surface impacket-* scripts to your host shell"
     echo "  ujust toggle-nmap        # re-choose where nmap lives (container/host/both/none)"
 
-# Initialize the Metasploit PostgreSQL database inside the container (re-runnable)
+# Initialize the Metasploit PostgreSQL database inside the container (run ONCE)
 [group('Kali')]
 setup-metasploit:
     #!/usr/bin/env bash
@@ -325,16 +325,31 @@ setup-metasploit:
         exit 1
     fi
     echo "Starting PostgreSQL and initializing the Metasploit database..."
-    # Runs inside the rootful Kali container. Idempotent: safe to re-run.
-    # - postgresql is started via the 'service' wrapper (still works now that
-    #   the box is an init container; 'systemctl start postgresql' works too).
+    # Runs inside the rootful Kali container.
+    # - Kali ships postgresql.service DISABLED by default (confirmed by
+    #   Kali's own docs: `sudo msfdb status` shows "Loaded: ... disabled;
+    #   vendor preset: disabled"). That's the actual bug behind "the DB
+    #   doesn't persist across reboots" -- postgres was never coming back on
+    #   its own, so the only documented recovery was re-running this whole
+    #   recipe, which re-runs `msfdb init` on every single reboot.
+    # - `systemctl enable` (once, here) fixes that at the root: this
+    #   container is an init container (init=true in the .ini), so once
+    #   postgresql is enabled, systemd starts it automatically every time the
+    #   container's init boots -- including a stopped container being
+    #   auto-started by a plain `distrobox enter`, which is exactly what the
+    #   exported msfconsole/msfvenom wrappers below do under the hood. No
+    #   ujust command, and no msfdb call, is needed again after a reboot.
     # - msfdb MUST be run as root on current Kali (it guards at the top and
     #   exits otherwise). It writes a SYSTEM-WIDE config to
     #   /usr/share/metasploit-framework/config/database.yml, so the exported
     #   msfconsole -- which runs as your user -- reads the same config and
     #   connects to the same database. distrobox provides passwordless sudo
     #   inside the container.
-    distrobox enter --root {{ kali_box }} -- bash -lc 'sudo service postgresql start; sudo msfdb init'
+    # - This recipe only needs to run ONCE. `msfdb init` is the one command
+    #   here that touches the database schema, and it's kept OUT of any
+    #   reboot-time path on purpose -- there's no "rerun this after every
+    #   reboot" step left for it to accidentally wipe a case's data with.
+    distrobox enter --root {{ kali_box }} -- bash -lc 'sudo systemctl enable --now postgresql; sudo msfdb init'
     echo ""
     echo "Exporting msfconsole and msfvenom to the host..."
     # Exported HERE rather than declaratively in the manifest: that way they
@@ -351,6 +366,12 @@ setup-metasploit:
     echo "Done. Launch Metasploit with:  msfconsole"
     echo "Generate payloads with:        msfvenom"
     echo "(or, explicitly:  distrobox enter --root {{ kali_box }} -- msfconsole)"
+    echo ""
+    echo "You only need this ONCE. PostgreSQL is now enabled inside the"
+    echo "container, so it comes back on its own after every reboot -- just"
+    echo "run 'msfconsole' directly. There is no need to re-run"
+    echo "'ujust setup-metasploit' (which is the only path here that touches"
+    echo "the database)."
 
 # Install BloodHound CE in the container and provision its databases (re-runnable)
 [group('Kali')]
