@@ -54,9 +54,8 @@ Author two masters, then derive every raster/variant from them:
 ### 4. fastfetch terminal logo
 
 `/etc/ublue-os/fastfetch.json` points `logo-directory` at
-`/usr/share/spinofin/fastfetch/` (single file, deterministic) instead of
-Bluefin's rotating dino set — the one surface that diverges from "keep the
-Bluefin aesthetic." Delete that JSON to restore the dino shuffle.
+`/usr/share/spinofin/fastfetch/` (single file) instead of
+Bluefin's rotating dino set.
 
 ### 5. About / "System Details" logo
 
