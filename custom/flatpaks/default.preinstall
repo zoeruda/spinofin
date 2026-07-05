@@ -1,70 +1,39 @@
-# Default Flatpak applications
-# These will be installed on first boot
-# Format: INI file with [Flatpak Preinstall NAME] groups
-# See: https://docs.flatpak.org/en/latest/flatpak-command-reference.html#flatpak-preinstall
+# spinofin default Flatpaks -- GUI apps installed on first boot.
+# INI format: one [Flatpak Preinstall <app-id>] group per app.
+# https://docs.flatpak.org/en/latest/flatpak-command-reference.html#flatpak-preinstall
 
-# Bootstrap-phase sanity check: proves the flatpak preinstall path works.
-# Flatseal (flatpak permission manager) is chosen because the Bluefin base
-# does NOT already ship it (unlike Extension Manager, which it does), so its
-# presence on a booted system is a real end-to-end test of this pipeline --
-# and it's genuinely useful for managing the permissions of the sandboxed
-# security GUI apps we'll add later.
+# Flatpak permission manager
 [Flatpak Preinstall com.github.tchx84.Flatseal]
 Branch=stable
 
-# Wireshark (protocol analyzer). NOTE: the Flathub build is sandboxed and does
-# NOT support live capture -- it opens/analyzes existing pcap/pcapng files only.
-# Live capture needs host/container-side dumpcap privileges (deferred item).
-# For promiscuous-mode / live capture, the move is to install wireshark INSIDE
-# the Kali container via apt and run it as sudo from inside the container
-# (`distrobox enter --root spinofin-kali -- sudo wireshark`); the rootful
-# container has the CAP_NET_RAW needed for capture.
+# Protocol analyzer. Flathub build opens existing pcaps only -- no live capture
+# (that needs privileged dumpcap; run wireshark inside the Kali container).
 [Flatpak Preinstall org.wireshark.Wireshark]
 Branch=stable
 
-# Burp Suite Community Edition (web proxy / app-security testing). NOTE: this is
-# a community-maintained Flathub WRAPPER of the proprietary Burp Community build;
-# it is not verified by or affiliated with PortSwigger. ~700 MiB download.
+# Burp Suite Community -- community-maintained Flathub wrapper of the
+# proprietary Burp build (not affiliated with PortSwigger). ~700 MiB.
 [Flatpak Preinstall net.portswigger.BurpSuite-Community]
 Branch=stable
 
-# Cherrytree (hierarchical note-taking) -- handy for structured pentest notes.
-# Current Flathub ID is net.giuspen.cherrytree (the older com.giuspen.cherrytree
-# is superseded; the project domain moved .com -> .net).
+# Hierarchical note-taking for structured pentest notes
 [Flatpak Preinstall net.giuspen.cherrytree]
 Branch=stable
 
-# Obsidian (Markdown knowledge base) -- engagement notes / reporting. Verified
-# by the Obsidian team on Flathub; proprietary EULA, ~600 MiB.
+# Markdown knowledge base -- engagement notes / reporting
 [Flatpak Preinstall md.obsidian.Obsidian]
 Branch=stable
 
-# KeePassXC (local password manager) -- store and organize credentials found
-# during engagements (cracked hashes, reused passwords, service accounts, etc.)
-# The Flathub build is published by the KeePassXC team and listed on their
-# official download page (keepassxc.org/download). App ID confirmed on
-# Flathub 2026-06: org.keepassxc.KeePassXC. Stores databases locally (no
-# cloud sync), supports TOTP, SSH agent integration, and the KeePassXC browser
-# extension for auto-fill on internal targets opened in the host browser.
+# Local password manager -- organize credentials found during engagements
 [Flatpak Preinstall org.keepassxc.KeePassXC]
 Branch=stable
 
-# Remmina (remote desktop client) -- RDP / VNC / SSH / X2Go GUI client.
-# Essential during an engagement for accessing compromised Windows hosts over
-# RDP or pivoting to internal Linux machines over VNC/SSH. GTK-based (fits
-# GNOME aesthetic). Flatpak repo is at flathub/org.remmina.Remmina; app ID
-# confirmed on Flathub 2026-06. NOTE: Flatpak sandboxing may affect SSH key
-# access from ~/.ssh -- if needed, grant filesystem access via Flatseal.
+# Remote desktop client (RDP / VNC / SSH). Sandbox may block ~/.ssh -- grant via Flatseal if needed.
 [Flatpak Preinstall org.remmina.Remmina]
 Branch=stable
 
-# Uncomment the apps you want installed on first boot:
-
+# Examples -- uncomment to install on first boot:
 ;[Flatpak Preinstall org.mozilla.firefox]
 ;Branch=stable
-
-;[Flatpak Preinstall org.mozilla.Thunderbird]
-;Branch=stable
-
 ;[Flatpak Preinstall org.gnome.Calculator]
 ;Branch=stable
