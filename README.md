@@ -6,6 +6,12 @@
 
 > A declarable, image-based pentesting OS — built on Bluefin. Kali-grade under the hood, GNOME-clean on the surface.
 
+**This README serves three audiences:**
+
+- **Using spinofin** — install it and run the tooling → [How to Get Started with spinofin](#how-to-get-started-with-spinofin)
+- **Forking spinofin** — build your own declarative OS from this repo → [Forking spinofin to build your own OS](#forking-spinofin-to-build-your-own-os)
+- **Contributing to spinofin** — improve this project → [Contributing to spinofin](#contributing-to-spinofin)
+
 ## How to Get Started with spinofin
 
 spinofin ships as a bootc/OCI image you rebase onto an existing [Bluefin](https://projectbluefin.io) install. Three steps: install Bluefin, switch to spinofin, then run the setup recipes.
@@ -141,6 +147,7 @@ through Homebrew or Flatpak instead:
 - **Host-shell aliases for the container** (baked into the image, no setup step): `kali` and `kalisudo`, declared in [`custom/aliases/`](custom/aliases/README.md) and shipped the same way as `custom/branding/` — a plain `/etc/profile.d/*.sh` file overlay (not a package), live as soon as you boot the image.
   - `kali <cmd>` — run `<cmd>` in the `spinofin-kali` container as your user. No args drops you into an interactive shell (same as `ujust enter-kali`).
   - `kalisudo <cmd>` — same, but as root in the container; this is the shorthand for `distrobox enter --root spinofin-kali -- sudo <cmd>`.
+  - `iskali` — report whether the `spinofin-kali` container exists (exit 0 if present, non-zero if not). Handy as a guard before the two above, e.g. `iskali && kali nmap …`, or just to check whether you still need `ujust setup-kali`.
   - **Existence guard:** before calling `distrobox enter`, both check the container actually exists. Plain `distrobox enter` on a non-existent container name does **not** fail cleanly — by default it interactively offers to create a new container under that name using the *host's* default image (Fedora) instead, which is exactly the wrong thing here. If `spinofin-kali` hasn't been created yet, you get a clear message pointing at `ujust setup-kali` instead of that prompt.
   - Targets `bash` (Bluefin's default interactive shell) via Fedora's `/etc/bashrc` → `/etc/profile.d` convention, which covers both login and ordinary new-terminal sessions. zsh users will need to `source /etc/profile.d/spinofin-kali-aliases.sh` from their own `~/.zshrc`.
 - **Sudo prompt disambiguation** (baked into the image + set up by `ujust setup-kali`): a sudo password prompt is ambiguous about whether it wants the host's or the container's password by default. Declared in [`custom/sudo-prompt/`](custom/sudo-prompt/README.md) (host side, shipped the same way as `custom/aliases/`) and in `setup-kali` itself (container side). Both set `Defaults passprompt="[sudo] password for %p (on %h): "` — the same line, resolving differently because `%h` (sudo's hostname escape) differs by context: the container's hostname is explicitly pinned to `spinofin-kali` via `hostname=` in the `.ini`, so you always see e.g. `[sudo] password for zoe (on spinofin-kali):` inside the box vs. `...(on <real-hostname>):` on the host. This only ever *adds* a file under `/etc/sudoers.d/` — it never edits the main `/etc/sudoers`, so a mistake here degrades gracefully (sudo just skips that one file) rather than locking out sudo entirely.
@@ -162,13 +169,13 @@ through Homebrew or Flatpak instead:
 - No-layering policy as mentioned above
 - Custom Branding: Spinosaurus sail logo and spinofin wordmark to replace Bluefin's branding
 
-_Last updated: 2026-06-30_
+_Last updated: 2026-07-04_
 
 > Replace the placeholders above with your actual customizations whenever you add or remove packages, apps, or configuration. This section is what tells users how your image differs from the base.
 
 ## Guided Copilot Mode
 
-This template works best with **phased prompts** that let Copilot bootstrap your image in three stages.
+Building an image like spinofin works best with **phased prompts** that let Copilot bootstrap it in three stages. These are the phases spinofin followed.
 
 ### Phase 1 — Bootstrap
 
@@ -253,23 +260,31 @@ Read `.agents/skills/finpilot-maintain.md` and `.agents/skills/finpilot-ci.md`, 
 - Helper functions for safe COPR usage
 - See [build/README.md](build/README.md) for details
 
-## Quick Start
+## Forking spinofin to build your own OS
 
-### 1. Create Your Repository
+spinofin is itself a worked example of [finpilot](#finpilot): a custom bootc image assembled from the Bluefin ecosystem. You can start from spinofin the same way. These are finpilot's setup steps, adapted for **forking this repository** instead of using a template — everything below happens in *your* fork, and the result is your own declarative OS with spinofin's pipeline, no-layering policy, and tooling structure already wired.
 
-Click "Use this template" to create a new repository from this template.
+If you only want to *run* spinofin, you don't need any of this — see [How to Get Started](#how-to-get-started-with-spinofin).
+
+### 1. Fork the repository
+
+Click **Fork** at the top of this repository. Working in a fork (rather than a bare copy) keeps you able to pull upstream spinofin changes later. Everything ships in the fork already — the workflows, the `staging → testing → main` pipeline, Renovate, and the `custom/` structure.
 
 ### 2. Rename the Project
 
-Important: Change `finpilot` to your repository name in these 7 files:
+Your fork's *published* image identity is already automatic — the build workflow derives `IMAGE_NAME` and the vendor/registry from your repo (`github.event.repository.name` / `github.repository_owner`), so it publishes to `ghcr.io/<your-username>/<your-repo>:stable` with no edits.
 
-1. `Containerfile` (`# Name:` comment and `ARG IMAGE_NAME`): `# Name: your-repo-name`
-2. `Justfile` (`export IMAGE_NAME := env("IMAGE_NAME", ...)`): `your-repo-name`
-3. `README.md` (title): `# your-repo-name`
-4. `artifacthub-repo.yml` (`repositoryID`): `repositoryID: your-repo-name`
-5. `custom/ujust/README.md` (bootc switch example): `localhost/your-repo-name:stable`
-6. `.github/workflows/clean.yml` (`packages`): `packages: your-repo-name`
-7. `iso/iso.toml` (bootc switch URL): `ghcr.io/YOUR_USERNAME/your-repo-name:stable`
+For local builds and repo consistency, change `spinofin` → your repo name and `zoeruda` → your GitHub username in these files:
+
+1. `Containerfile` — the `# Name:` comment, `ARG IMAGE_NAME`, `ARG IMAGE_VENDOR`, and `ARG IMAGE_PRETTY_NAME`
+2. `Justfile` — the `IMAGE_NAME` default: `export IMAGE_NAME := env("IMAGE_NAME", "spinofin")`
+3. `artifacthub-repo.yml` — `repositoryID`
+4. `iso/iso.toml` — the `bootc switch` image URL
+5. `.github/workflows/clean.yml` — `packages:`
+6. `README.md` — the title and the `ghcr.io/<vendor>/<name>` examples
+7. `custom/ujust/README.md` — the `bootc switch` example
+
+The `spinofin-*` names in customizations — the `spinofin-kali` container, the `custom/branding/` assets, and the aliases and sudo-prompt drop-ins — are cosmetic and can stay as-is; nothing breaks if they keep the spinofin name. If you'd rather have a fully clean rebrand, you can later find-and-replace every remaining occurrence of `spinofin` across both file contents and filenames on your own.
 
 ### 3. Enable GitHub Actions
 
@@ -282,7 +297,7 @@ Note: spinofin's `:stable` (main) images are signed with keyless cosign/OIDC —
 
 ### 4. Enable Renovate (Required)
 
-Renovate automatically updates dependencies and GitHub Actions (including workflow files). This template uses a self-hosted Renovate runner via `projectbluefin/actions`.
+Renovate automatically updates dependencies and GitHub Actions (including workflow files). spinofin uses a self-hosted Renovate runner via `projectbluefin/actions`.
 
 **One-time setup:**
 
@@ -294,15 +309,12 @@ Renovate automatically updates dependencies and GitHub Actions (including workfl
 6. Go to your repository → Settings → Secrets and variables → Actions
 7. Add a new secret: **`RENOVATE_TOKEN`** (paste the token value)
 8. Enable **Settings → General → Pull Requests → Allow auto-merge** so Renovate can merge low-risk updates after checks pass
-9. **Configure branch protection for `main`** (required for automerge to work):
-   - Go to Settings → Branches → Add rule
-   - Set **Branch name pattern** to `main`
-   - Enable **"Require a pull request before merging"**
-   - Enable **"Require status checks to pass before merging"**
-   - Add `validate` as a required status check
-   - Enable **"Require branches to be up to date before merging"** (recommended)
+9. **Configure branch protection** to match the inherited pipeline (see the branch model in step 6):
+   - Your fork's `renovate.json` targets the **`staging`** branch (`baseBranches: ["staging"]`), so Renovate opens its PRs there — the base of the promotion flow, so updates soak through `:testing` before `:stable`.
+   - Protect **`main` only** (Settings → Branches → Add rule): require a pull request, require the **`validate`** status check, and (recommended) "require branches up to date." Require only `validate` — the path-filtered validators don't run on every PR, so requiring them would block PRs that don't touch those paths.
+   - Deliberately leave **`staging`** and **`testing`** unprotected. This is what lets you sync them with `main` directly (a plain merge/push) when a promotion PR would otherwise show no changes — e.g. if you open a `testing → main` PR before syncing `main` back down. Protecting them would force every such sync through a PR and reintroduce that friction.
 
-Renovate will run every 6 hours and on config changes. It pins GitHub Actions to SHAs and updates tracked image digests automatically.
+Renovate runs on a schedule and on config changes. It pins GitHub Actions to SHAs and updates tracked image digests automatically.
 
 ### 5. Customize Your Image
 
@@ -327,20 +339,20 @@ Build-Time Layering" above), so packages are not added via `dnf5` in
 - Add Brewfiles in `custom/brew/` ([guide](custom/brew/README.md))
 - Add Flatpaks in `custom/flatpaks/` ([guide](custom/flatpaks/README.md))
 - Add ujust commands in `custom/ujust/` ([guide](custom/ujust/README.md))
-- Add baked-in shell aliases/functions in `custom/aliases/` ([guide](custom/aliases/README.md)) — a plain `/etc/profile.d/*.sh` file overlay, the same file-overlay mechanism `custom/branding/` uses, not a package install. spinofin ships `kali`/`kalisudo` this way (see below) as the working example.
+- Add baked-in shell aliases/functions in `custom/aliases/` ([guide](custom/aliases/README.md)) — a plain `/etc/profile.d/*.sh` file overlay, the same file-overlay mechanism `custom/branding/` uses, not a package install. spinofin ships `kali`/`kalisudo`/`iskali` this way (see above) as the working example.
 - Add baked-in sudo-prompt or other `/etc/sudoers.d/` customizations in `custom/sudo-prompt/` ([guide](custom/sudo-prompt/README.md)) — same file-overlay mechanism; only ever *adds* a new file, never edits the main `/etc/sudoers`.
 
 ### 6. Development Workflow
 
-All changes should be made via pull requests:
+spinofin uses a three-tier promotion pipeline, and your fork inherits it:
 
-1. Open a pull request on GitHub with the change you want.
-2. The PR will automatically trigger:
-   - Build validation
-   - Brewfile, Flatpak, Justfile, pipx, and shellcheck validation
-   - Test image build
-3. Once checks pass, merge the PR
-4. Merging triggers publishes a `:stable` image
+**`staging` → `testing` → `main`**
+
+- **`staging`** is the working branch. Do your work here (or PR into it); Renovate opens its dependency PRs here too. Merging to `staging` publishes nothing.
+- **`testing`** builds and publishes the **`:testing`** image. Promote `staging → testing` by pull request; the merge triggers a `:testing` build for real-world soak testing.
+- **`main`** builds and publishes the signed **`:stable`** image. Promote `testing → main` by pull request; the merge triggers the signed `:stable` release.
+
+Every PR into `staging`, `testing`, or `main` runs the validators (build validation, Brewfile / Flatpak / Justfile / pipx / alias / shellcheck checks, and the no-layering guard). Promotions are true merge commits — not squash — so branch ancestry stays intact and each promotion PR shows only the genuinely new changes.
 
 ### 7. Deploy Your Image
 
@@ -364,7 +376,7 @@ sudo systemctl reboot
 
 ### Setup Instructions
 
-This template uses **keyless OIDC signing** via Cosign and GitHub Actions. No manual key generation, `cosign.key`, or `cosign.pub` files are required.
+spinofin uses **keyless OIDC signing** via Cosign and GitHub Actions. No manual key generation, `cosign.key`, or `cosign.pub` files are required.
 
 1. Edit `.github/workflows/build-image.yml`
 2. Find the "OPTIONAL: Sign and attest" section
@@ -395,39 +407,38 @@ Ready to take your custom OS to production? Enable these features for enhanced s
   - See "Optional: Enable Image Signing" section above for setup instructions
   - Status: **Enabled** — `:stable` (main) images are signed; `:testing` is intentionally left unsigned
 
-- [ ] **Enable Image Rechunking** (Recommended)
+- [ ] **Enable Image Rechunking** (Recommended — but **deferred** on this base; see note)
   - Optimizes bootc image layers for better update performance
   - Reduces update sizes by 5-10x when combined with package cadence data
   - Improves download resumability with evenly sized layers
-  - To enable:
-    1. Edit `.github/workflows/build-image.yml`
-    2. Find the "OPTIONAL: Rechunking" section
-    3. Uncomment the `bootc-build/chunka` step
-  - For optimal results, also add `bootc-build/apply-pkg-intervals` and a `pkg-cadence.yml` workflow
-  - Status: **Not enabled by default** (optional optimization)
+  - Status: **Deferred** — neither OCI-native rechunker works on spinofin's full-Bluefin base (`chunka` overflows the kernel arg/env limit; `bootc-base-imagectl` isn't in the base). Not blocking — it's an optimization, not a correctness requirement. See "Adding Image Rechunking" below for the full rationale and revisit conditions.
 
 #### Adding Image Rechunking
 
-After building your bootc image, add a rechunk step before pushing to the registry. The template ships with a commented `bootc-build/chunka` step in `.github/workflows/build-image.yml`:
+Rechunking reorganizes OCI layers so OTA updates download only what changed. It is an optional optimization, and **spinofin currently leaves it disabled** — see the commented-out block in `.github/workflows/build-image.yml`. The reason is specific to the full-Bluefin base this image is built on; a fork on a leaner base may be able to enable it directly.
+
+**Why it's disabled here.** The finpilot template ships a `bootc-build/chunka` step (which wraps [chunkah](https://github.com/coreos/chunkah)):
 
 ```yaml
 - name: Rechunk image
   if: github.event_name != 'pull_request'
   id: rechunk-image
-  uses: projectbluefin/actions/bootc-build/chunka@6231015b336556d2ff0adc1d1e59514bf19dcb42 # v1
+  uses: projectbluefin/actions/bootc-build/chunka@... # pinned by Renovate
   with:
     source-image: localhost/${{ env.IMAGE_NAME }}:${{ env.DEFAULT_TAG }}
     max-layers: 128
 ```
 
-This uses [chunkah](https://github.com/coreos/chunkah) to reorganize OCI layers without rpm-ostree. Renovate will keep the action updated once it is uncommented.
+`chunka` re-applies base-image metadata by passing the entire `podman inspect` output to `sudo` in the `CHUNKAH_CONFIG_STR` environment variable. spinofin's full-Bluefin base has a large image config (a long layer `History`), so that single string exceeds the kernel's fixed 128 KiB argument/environment limit and `sudo` fails with `E2BIG` ("Argument list too long", exit 126). This is a hard kernel limit — it can't be tuned around, and the action exposes no input to change how the config is transported. A leaner base (like finpilot's default) stays under the limit, so this step works there; on a full-Bluefin base it does not.
 
-**Parameters:**
+**Alternatives considered:**
 
-- `max-layers`: Maximum number of layers for the rechunked image (128 is a typical bootc default)
-- `source-image`: Local image reference to rechunk
+- `bootc-base-imagectl rechunk` rechunks in-image (no env var, so no `E2BIG`), but `/usr/libexec/bootc-base-imagectl` is not present in `ghcr.io/ublue-os/bluefin:stable`, so it can't run.
+- [`hhd-dev/rechunk`](https://github.com/hhd-dev/rechunk) (the ublue/Bazzite rechunker) works on this image family, but it is OSTree/rpm-ostree-based, which conflicts with spinofin's "no rpm-ostree" stance and the Track-B (GNOME OS bootc) migration target.
 
-**For optimal OTA deltas**, also add `bootc-build/apply-pkg-intervals` before the rechunk step and create a `.github/workflows/pkg-cadence.yml` workflow that calls `projectbluefin/actions/.github/workflows/reusable-pkg-cadence.yml@v1`. This groups packages by update cadence (weekly, monthly, quarterly, yearly) so a typical update only downloads layers that actually changed. Without it, chunkah still works but uses default layer grouping.
+**When to revisit:** if `chunka`/chunkah upstream adds file-based config passing (the standard fix for `E2BIG`), or if the base image starts shipping `bootc-base-imagectl`. Until then, rechunking stays off — it's an optimization, not a correctness requirement, so nothing else depends on it.
+
+**Once rechunking is enabled (for optimal OTA deltas)**, also add `bootc-build/apply-pkg-intervals` before the rechunk step and create a `.github/workflows/pkg-cadence.yml` workflow that calls `projectbluefin/actions/.github/workflows/reusable-pkg-cadence.yml@v1`. This groups packages by update cadence (weekly, monthly, quarterly, yearly) so a typical update only downloads layers that actually changed. Without it, chunkah still works but uses default layer grouping.
 
 **References:**
 
@@ -450,6 +461,22 @@ cosign verify \
   ghcr.io/zoeruda/spinofin:stable
 ```
 
+## Contributing to spinofin
+
+Contributions are welcome. spinofin develops on the `staging` branch:
+
+1. **Fork the repo and branch off `staging`** (not `main`) — `staging` is where work lands first.
+2. **Open your pull request against `staging`.** It runs the full validator suite (build validation; Brewfile / Flatpak / Justfile / pipx / alias / shellcheck checks; and the no-layering guard). Keep them green.
+3. A maintainer promotes merged changes up the pipeline: `staging → testing` (publishes `:testing` to soak) → `main` (publishes the signed `:stable`). Please don't PR directly into `testing` or `main`.
+
+Keep contributions consistent with spinofin's core architecture decisions:
+
+- **No build-time package layering.** Don't add `dnf5`/`rpm-ostree`/`apt`/`yum`/COPR installs in `build/*.sh` or the `Containerfile` — the CI no-layering guard will reject it. CLI tools go in `custom/brew/*.Brewfile` or `custom/pipx/*.pipx`, GUI apps in `custom/flatpaks/*.preinstall`, and heavy pentest tooling in the shared Kali container (`custom/distrobox/spinofin-kali.ini`). See [No Build-Time Layering](#no-build-time-layering).
+- **Host stays pristine; the toolbox does the heavy lifting.** Prefer the rootful Kali container for anything needing privileged capabilities or Kali-only packaging.
+- **Declare, don't script.** New packages belong in the declarative `custom/` files, not in imperative build steps.
+
+If you're proposing something that changes one of these decisions, open an issue first so we can talk it through.
+
 ## Detailed Guides
 
 - [Homebrew/Brewfiles](custom/brew/README.md) - Runtime package management
@@ -459,21 +486,17 @@ cosign verify \
 
 ## finpilot
 
-spinofin is built on [finpilot](https://github.com/projectbluefin/finpilot), Bluefin's template for assembling your own custom bootc image. The generic template description follows.
+spinofin started from [**finpilot**](https://github.com/projectbluefin/finpilot) — Bluefin's template for assembling your own custom bootc image — and owes it the multi-stage build structure, the `custom/` layout, and the CI scaffolding this project builds on.
 
-A template for building custom bootc operating system images based on the lessons from [Universal Blue](https://universal-blue.org/) and [Bluefin](https://projectbluefin.io). It is designed to be used manually, but is optimized to be bootstraped by GitHub Copilot. After set up you'll have your own custom Linux.
+finpilot's core idea shapes spinofin's whole approach: **you don't modify Bluefin, you assemble your own image** from the same shared components (`@projectbluefin/common`, `@ublue-os/brew`) that Bluefin, Aurora, and Bluefin LTS are built from. That's what makes spinofin's no-layering, Track-B-ready design realistic rather than a rewrite.
 
-This template uses the **multi-stage build architecture** from @projectbluefin/distroless, combining resources from multiple OCI containers for modularity and maintainability. See the [Architecture](#architecture) section below for details.
+To build something of your own from this same foundation, see [Forking spinofin to build your own OS](#forking-spinofin-to-build-your-own-os), or start from finpilot directly.
 
-**Unlike previous templates, you are not modifying Bluefin and making changes.**: You are assembling your own Bluefin in the same exact way that Bluefin, Aurora, and Bluefin LTS are built. This is way more flexible and better for everyone since the image-agnostic and desktop things we love about Bluefin lives in @projectbluefin/common.
-
-Instead, you create your own OS repository based on this template, allowing full customization while leveraging Bluefin's robust build system and shared components.
-
-> Be the one who moves, not the one who is moved.
+> Be the one who moves, not the one who is moved. — finpilot
 
 ## Architecture
 
-This template follows the **multi-stage build architecture** from @projectbluefin/distroless, as documented in the [Bluefin Contributing Guide](https://docs.projectbluefin.io/contributing/).
+The finpilot template that spinofin is built on follows the **multi-stage build architecture** from @projectbluefin/distroless, as documented in the [Bluefin Contributing Guide](https://docs.projectbluefin.io/contributing/).
 
 ### Multi-Stage Build Pattern
 
@@ -535,7 +558,7 @@ just run-vm-qcow2       # Test in browser-based VM
 
 ## Security
 
-This template provides security features for production use:
+The finpilot template that spinofin is built on provides security features for production use:
 
 - Optional image signing with keyless OIDC cosign for cryptographic verification
 - Automated security updates via Renovate

@@ -176,23 +176,32 @@ jobs:
           allow-write: ${{ github.event_name != 'pull_request' && 'true' || 'false' }}
           cache-bust: ${{ hashFiles('**/Containerfile') }}
 
-      # OPTIONAL: Rechunking (OCI-native, no rpm-ostree)
-      # Rechunking improves OTA delta performance by reorganizing layers.
-      # Uncomment the step below to enable it. Renovate will keep the action
-      # pinned and up to date automatically once it is uncommented.
+      # Rechunking (OCI-native OTA-delta optimization) -- DELIBERATELY DISABLED.
       #
-      # For optimal layer grouping (packages sorted by update cadence), also add
-      # the bootc-build/apply-pkg-intervals step before rechunking and create a
-      # .github/workflows/pkg-cadence.yml workflow. See:
-      #   https://github.com/projectbluefin/actions/tree/main/bootc-build/chunka
-      #   https://github.com/projectbluefin/actions/tree/main/bootc-build/apply-pkg-intervals
-      # - name: Rechunk image
-      #   if: github.event_name != 'pull_request'
-      #   id: rechunk-image
-      #   uses: projectbluefin/actions/bootc-build/chunka@6231015b336556d2ff0adc1d1e59514bf19dcb42 # v1
-      #   with:
-      #     source-image: localhost/${{ env.IMAGE_NAME }}:${{ env.DEFAULT_TAG }}
-      #     max-layers: 128
+      # Rechunking reorganizes image layers by content so OTA updates download
+      # only what changed. It is an OPTIONAL optimization and is intentionally
+      # left OFF here, because neither OCI-native rechunker works on spinofin's
+      # full-Bluefin base:
+      #
+      #   * projectbluefin/actions/bootc-build/chunka (wraps coreos/chunkah)
+      #     re-applies base-image metadata by passing the image's full
+      #     `podman inspect` output to `sudo` via the CHUNKAH_CONFIG_STR env var.
+      #     Our full-Bluefin base has a large config (a long layer History), so
+      #     that single string exceeds the kernel's fixed 128 KiB arg/env exec
+      #     limit and sudo dies with E2BIG ("Argument list too long", exit 126).
+      #     This is a hard kernel limit -- not tunable, and not fixable via the
+      #     action's inputs (source-image / max-layers).
+      #
+      #   * bootc-base-imagectl rechunk (in-image, no env var -> no E2BIG) cannot
+      #     run: /usr/libexec/bootc-base-imagectl is not present in
+      #     ghcr.io/ublue-os/bluefin:stable.
+      #
+      # The remaining option, hhd-dev/rechunk, is OSTree/rpm-ostree-based, which
+      # conflicts with the "no rpm-ostree" stance and the Track-B (GNOME OS bootc)
+      # target. Rechunking is therefore deferred until either chunka gains
+      # file-based config passing upstream, or the base ships bootc-base-imagectl.
+      # It is an optimization, not a correctness requirement, so nothing else
+      # depends on it. Full write-up: README "Adding Image Rechunking".
 
       - name: Tag images
         if: github.event_name != 'pull_request'
@@ -232,7 +241,7 @@ jobs:
       - name: Sign and publish
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         continue-on-error: true
-        uses: projectbluefin/actions/bootc-build/sign-and-publish@6231015b336556d2ff0adc1d1e59514bf19dcb42 # v1
+        uses: projectbluefin/actions/bootc-build/sign-and-publish@d8f871c0ca7a868339d3c175200a7319492473c7 # v1
         with:
           image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}
           digest: ${{ steps.push.outputs.digest }}

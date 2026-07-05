@@ -2,35 +2,18 @@
 #########################
 ### kali-toolsets.just
 #########################
-## Kali tool *families* (metapackages) for the shared toolbox container (Phase 3).
+## On-demand Kali tool *families* (metapackages) for the shared spinofin-kali
+## container. apt runs container-local (never on the host / the bootc image).
+## Not added to the manifest's additional_packages, so first-boot assemble stays
+## small and users pull only the families they want.
 ##
-## These recipes apt-install Kali meta-packages INSIDE the existing
-## spinofin-kali container (declared in custom/distrobox/spinofin-kali.ini and
-## provisioned by `ujust setup-kali`). They do NOT create new containers, and
-## they are NOT added to the manifest's additional_packages -- that keeps the
-## heavy first-boot assemble small and lets users pull only the families they
-## want, on demand, into the one shared container.
-##
-## POLICY: apt here runs container-local (inside Kali), never on the host, so
-## it does not touch the bootc image and does not violate the host no-layering
-## policy. The no-layering CI guard scans build/* and the Containerfile only --
-## not custom/ujust/ -- by design.
-##
-## Metapackage names track kali-meta (verified against kali.org, 2026-06); see
-## https://www.kali.org/docs/general-use/metapackages/ for the full list.
-##
-## Hardware-dependent families (kali-tools-wireless, -802-11, -bluetooth,
-## -rfid, -sdr) are deliberately NOT exposed here. They need host device
-## passthrough / monitor mode that a rootful distrobox does not provide out of
-## the box -- the roadmap's known-hard deferred item. Installing the
-## metapackage alone would not make those tools functional, so we omit them
-## rather than ship a misleading recipe.
+## Hardware families (wireless, 802-11, bluetooth, rfid, sdr) are omitted: they
+## need host device passthrough a rootful distrobox can't provide, so the
+## metapackage alone wouldn't make them work (roadmap known-hard item).
 
-# NOTE: `kali_box` is intentionally NOT defined here. It is declared in
-# kali-container.just, which the build concatenates into the same
-# 60-custom.just -- defining it again would make `just` fail with
-# "variable `kali_box` has multiple definitions". The recipes below reference
-# it (evaluated at run time), so it resolves from the merged justfile.
+# `kali_box` is defined in kali-container.just (concatenated into the same
+# merged justfile) -- redefining it here would make `just` fail with "multiple
+# definitions". Recipes below reference it at run time.
 
 # Install one Kali tool family into the container (arg = the kali-tools-<family> suffix)
 [group('Kali Toolsets')]
