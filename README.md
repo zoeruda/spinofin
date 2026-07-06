@@ -34,7 +34,7 @@ sudo bootc switch ghcr.io/zoeruda/spinofin:stable
 sudo systemctl reboot
 ```
 
-spinofin's `:stable` images (built from `main`) are signed with keyless cosign/OIDC via Fulcio; `:testing` images are intentionally left unsigned. To require a valid signature on each pull, add `--enforce-container-sigpolicy` to the `bootc switch` command. If you're forking this repo, see [Optional: Enable Image Signing](#optional-enable-image-signing) to set it up for your own registry.
+spinofin's `:stable` images (built from `main`) are signed with keyless cosign/OIDC via Fulcio; `:testing` images are intentionally left unsigned. If you're forking this repo, see [Optional: Enable Image Signing](#optional-enable-image-signing) to set it up for your own registry.
 
 ### 3. Get set up (ujust recipes)
 
@@ -61,6 +61,13 @@ ujust toggle-nmap             # choose where nmap lives: container / host / both
 ujust list-kali-toolsets      # list the available Kali tool families
 ujust install-kali-web        # e.g. add the web-app testing family (see list for the rest)
 ujust enter-kali              # drop into a shell in the container
+```
+
+Optional — switch your shell between bash, zsh, and fish (host and/or the Kali container are independent):
+
+```bash
+ujust toggle-shell            # host: which shell new terminals launch
+ujust toggle-kali-shell       # Kali container: which shell enter-kali launches
 ```
 
 GUI apps (Flatseal, Wireshark, Burp Suite Community, KeePassXC, Remmina) install automatically on first boot via Flatpak — no command needed.
@@ -107,8 +114,6 @@ through Homebrew or Flatpak instead:
   - **Exploit reference:** `exploitdb` (`searchsploit`).
   - **Pivoting / proxying:** `proxychains-ng`, `chisel-tunnel` (installs the `chisel` binary — fast TCP/UDP tunnel over HTTP for port-forwarding through a foothold).
   - **Networking utilities:** `netcat`, `rlwrap` (readline wrapper for tools lacking line-editing, e.g. raw `nc` shells).
-
-  Which tools go host-side (here) vs. into the Kali container is governed by the **host-vs-container rubric** documented at the top of [`custom/brew/default.Brewfile`](custom/brew/default.Brewfile). Raw-socket / privileged / Kali-only / heavy-dependency tools (e.g. `masscan`, `naabu`, `nmap`) stay in the container; Python-only tools without a clean formula go in the `pipx` bucket below. `pipx` itself is installed via this Brewfile to bootstrap that bucket.
 - **CLI Tools (pipx)**: Python-only tools with no clean Homebrew formula, declared in [`custom/pipx/default.pipx`](custom/pipx/default.pipx) and installed at runtime via `ujust install-pipx-tools` into the user's isolated pipx venvs (same no-layering posture as brew):
   - `bloodyAD` — Active Directory privesc framework (pure-Python wheel, no system build deps).
   - `soaphound` — BloodHound ingestor over ADWS/SOAP (the Python tool, not the .NET one). Pure-Python; its only real dependency, `impacket`, installs from prebuilt manylinux wheels and pulls no `gssapi`, so no system build headers are needed. That bundled `impacket` is isolated inside soaphound's own pipx venv and is **not** on `$PATH` — the standalone `impacket-*` CLI scripts come from the **container** instead (see below), so there's no host/container collision.
@@ -144,6 +149,8 @@ through Homebrew or Flatpak instead:
   - `ujust export-impacket` — surface the container's `impacket-*` scripts to the host shell as distrobox wrappers in `~/.local/bin`, so `impacket-secretsdump` (etc.) run from the host but execute in the container.
   - `ujust link-wordlists` — stage the Kali wordlists for **host-native** tools (john, hashcat, ffuf). distrobox shares only `$HOME` (not the container's `/usr`), *and* `/usr/share/wordlists` is mostly symlinks into other packages (many dangling), so a bare symlink/copy would be broken on the host. Instead this stages **real files** under `~/.local/share/spinofin/wordlists` (linked as `~/wordlists`): it relocates the `seclists` tree there (symlinking `/usr/share/seclists` back so the container keeps its path) and decompresses `rockyou` to `~/wordlists/rockyou.txt`. Use e.g. `hashcat -m 0 -a 0 hashes.txt ~/wordlists/rockyou.txt` or `john --wordlist=~/wordlists/rockyou.txt hashes.txt`, plus the real lists under `~/wordlists/seclists/Passwords/`.
   - `ujust toggle-nmap` — interactively pick where `nmap` is installed: **both** (default — brew's `rustscan` formula pulls in host `nmap` as a real dependency anyway, so this is the natural resting state: unprivileged `-sT` connect scans via brew on the host, full raw-socket scans via `CAP_NET_RAW` in the container, run with the `kali` alias), **container-only** (recommended if you want full scan capability without a duplicate host copy), **host-only** (unprivileged `-sT` only, no raw sockets — recommended for `rustscan` integration), or **none**. Manages the *live* state on each side (`brew install`/`uninstall --ignore-dependencies`, container `apt install`/`remove`) — it does not edit either source of truth, so re-provisioning from either one brings its copy of `nmap` back regardless of your last choice: `ujust install-default-apps`/`install-all-brew` for host `nmap` (those recipes now detect and repair formulas with missing dependencies via `brew missing` + `brew reinstall`, so a plain re-run pulls it back in), and `ujust rebuild-kali` for container `nmap` (still declared in `spinofin-kali.ini`; `setup-kali` never touches an existing container, so only a rebuild brings it back). Re-run `toggle-nmap` afterward if you want a different state.
+  - `ujust toggle-shell` *(host)* — pick the shell **new terminals** launch (bash / zsh / fish). All three already ship on the Bluefin base, so nothing is normally installed; if one is genuinely missing (e.g. a future Track-B GNOME OS base) it's pulled via **brew** — user-scoped, never `rpm-ostree`, so the host stays pristine. It deliberately does **not** change your login shell: Bluefin ships no `chsh`, editing `/etc/passwd` doesn't change how the terminal launches, and pointing a login shell at a brew shell is a known way to lose brew's PATH. Instead it sets the **default Ptyxis profile's custom command** — the upstream-recommended way to switch shells on Bluefin — so new tabs/windows open in your choice; picking `bash` clears the override. Applies to **new** terminals only (run `exec <shell>` for the current one). If your terminal isn't Ptyxis, it prints the manual profile setting instead of guessing.
+  - `ujust toggle-kali-shell` *(container)* — the counterpart for the Kali box: pick the shell it launches when you `ujust enter-kali` (bash / zsh / fish). Here the classic Linux approach *is* correct — `distrobox enter` runs the container user's **login shell** — so this installs the shell container-side via `apt` if missing (container-local; does not touch the host or the no-layering policy) and then `usermod -s` sets it. It installs **before** switching on purpose: `distrobox enter` breaks entirely if the login shell points at a binary that isn't present. zsh/fish here are container-local and **not** declared in `spinofin-kali.ini`, so `ujust rebuild-kali` recreates the box with its default (`bash`) — re-run `toggle-kali-shell` after a rebuild.
 - **Host-shell aliases for the container** (baked into the image, no setup step): `kali` and `kalisudo`, declared in [`custom/aliases/`](custom/aliases/README.md) and shipped the same way as `custom/branding/` — a plain `/etc/profile.d/*.sh` file overlay (not a package), live as soon as you boot the image.
   - `kali <cmd>` — run `<cmd>` in the `spinofin-kali` container as your user. No args drops you into an interactive shell (same as `ujust enter-kali`).
   - `kalisudo <cmd>` — same, but as root in the container; this is the shorthand for `distrobox enter --root spinofin-kali -- sudo <cmd>`.
