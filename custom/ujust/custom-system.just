@@ -90,3 +90,88 @@ update-and-reboot:
     else
         echo "Reboot later to apply updates."
     fi
+
+# Set the shell new terminals launch on the host (bash, zsh, or fish)
+[group('System')]
+toggle-shell:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # bash, zsh, and fish all ship on the Bluefin base already, so "install" is
+    # normally a no-op here. If a shell is genuinely missing (e.g. a future
+    # Track-B GNOME OS base that doesn't ship it), we fall back to brew -- the
+    # same user-scoped, host-pristine path the rest of spinofin uses. We never
+    # layer a shell onto the host with rpm-ostree.
+    #
+    # "Switch to it" deliberately does NOT change your login shell. Bluefin ships
+    # no chsh, editing /etc/passwd doesn't change how the terminal launches, and
+    # pointing a login shell at a brew shell is a known way to lose brew's PATH.
+    # The supported switch on Bluefin is per-terminal: we set the default Ptyxis
+    # profile's custom command. (The container recipe, toggle-kali-shell, DOES
+    # change the real login shell -- that's correct there, wrong here.)
+    echo "Which shell should new terminals launch?"
+    echo "  1. bash (default)"
+    echo "  2. zsh"
+    echo "  3. fish"
+    read -rp "Enter a number [1-3]: " choice
+    case "${choice}" in
+        1) shell_name="bash" ;;
+        2) shell_name="zsh" ;;
+        3) shell_name="fish" ;;
+        *)
+            echo "ERROR: invalid choice '${choice}' -- expected 1, 2, or 3." >&2
+            exit 1
+            ;;
+    esac
+
+    # --- Resolve (or, only if missing, brew-install) the shell binary ---
+    shell_path="$(command -v "${shell_name}" 2>/dev/null || true)"
+    if [ -z "${shell_path}" ] && [ -x "/usr/bin/${shell_name}" ]; then
+        shell_path="/usr/bin/${shell_name}"
+    fi
+    if [ -z "${shell_path}" ]; then
+        echo "${shell_name} not found on host."
+        if command -v brew >/dev/null 2>&1; then
+            echo "Installing ${shell_name} via Homebrew (user-scoped, not layered)..."
+            brew install "${shell_name}"
+            shell_path="$(command -v "${shell_name}" 2>/dev/null || true)"
+        else
+            echo "ERROR: ${shell_name} is missing and brew isn't available." >&2
+            echo "Run 'ujust install-default-apps' (or install Homebrew), then retry." >&2
+            exit 1
+        fi
+    fi
+    if [ -z "${shell_path}" ] || [ ! -x "${shell_path}" ]; then
+        echo "ERROR: could not resolve an executable path for ${shell_name}." >&2
+        exit 1
+    fi
+    echo "Using ${shell_name} at ${shell_path}"
+
+    # --- Point the default Ptyxis profile at it (user-scoped dconf) ---
+    # Do NOT run this recipe under pkexec/sudo, or the setting lands in root's
+    # dconf instead of yours.
+    if ! command -v gsettings >/dev/null 2>&1; then
+        echo ""
+        echo "NOTE: gsettings not found -- set your terminal profile's custom"
+        echo "command to '${shell_path}' by hand."
+        exit 0
+    fi
+    prof="$(gsettings get org.gnome.Ptyxis default-profile-uuid 2>/dev/null | tr -d "\"'" || true)"
+    prof_path="org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/${prof}/"
+    if [ -n "${prof}" ] && gsettings list-keys "${prof_path}" 2>/dev/null | grep -qx "custom-command"; then
+        if [ "${shell_name}" = "bash" ]; then
+            # bash is the profile's default login shell; clear the override.
+            gsettings set "${prof_path}" use-custom-command false
+            echo "Reset the default Ptyxis profile to its login shell (bash)."
+        else
+            gsettings set "${prof_path}" custom-command "${shell_path}"
+            gsettings set "${prof_path}" use-custom-command true
+            echo "Set the default Ptyxis profile to launch ${shell_path}."
+        fi
+        echo ""
+        echo "Open a NEW terminal window or tab to get ${shell_name}."
+        echo "(This session keeps its shell; run 'exec ${shell_name}' now if you want it here.)"
+    else
+        echo ""
+        echo "NOTE: no Ptyxis profile found to update (different terminal emulator?)."
+        echo "Set your terminal profile's custom command to '${shell_path}' by hand."
+    fi

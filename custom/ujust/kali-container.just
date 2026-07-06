@@ -324,6 +324,24 @@ setup-metasploit:
         echo "Run 'ujust setup-kali' first to provision it." >&2
         exit 1
     fi
+    # Ensure this recipe's container packages are present. Normally they come
+    # from spinofin-kali.ini at assemble time; installing on demand here (same
+    # container-local apt path as toggle-nmap/setup-bloodhound -- does not touch
+    # the host or the no-layering policy) makes the recipe self-sufficient if the
+    # container drifted or the .ini was edited without a rebuild. dpkg -s (not
+    # command -v) so metapackages/data packages are detected by package name.
+    distrobox enter --root {{ kali_box }} -- bash -lc '
+        set -euo pipefail
+        missing=()
+        for pkg in metasploit-framework postgresql; do
+            dpkg -s "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+        done
+        if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Installing missing container packages: ${missing[*]}"
+            sudo apt-get update -qq
+            sudo apt-get install -y "${missing[@]}"
+        fi
+    '
     echo "Starting PostgreSQL and initializing the Metasploit database..."
     # Runs inside the rootful Kali container.
     # - Kali ships postgresql.service DISABLED by default (confirmed by
@@ -494,6 +512,18 @@ export-impacket:
     # to drift. Re-runnable; new scripts appear after a container update + re-run.
     # NOTE: uses the same rootful distrobox-export path as the msfconsole export,
     # so it inherits the same rootful-$HOME considerations -- validate on real boot.
+    # Ensure impacket is present before exporting: without it the glob below
+    # matches nothing and the recipe would "export" the literal /usr/bin/impacket-*
+    # and claim success. Normally from spinofin-kali.ini; installed on demand here
+    # (container-local apt -- does not touch the host or the no-layering policy).
+    distrobox enter --root {{ kali_box }} -- bash -lc '
+        set -euo pipefail
+        if ! dpkg -s impacket-scripts >/dev/null 2>&1; then
+            echo "Installing missing container package: impacket-scripts"
+            sudo apt-get update -qq
+            sudo apt-get install -y impacket-scripts
+        fi
+    '
     distrobox enter --root {{ kali_box }} -- bash -lc 'n=0; for b in /usr/bin/impacket-*; do distrobox-export --bin "$b" --export-path "$HOME/.local/bin" >/dev/null 2>&1 || true; n=$((n + 1)); done; echo "Exported ${n} impacket-* commands to ~/.local/bin"'
     echo "Done. Run impacket-secretsdump (etc.) straight from your shell."
 
@@ -525,6 +555,25 @@ link-wordlists:
     # exist twice inside that one container) -- nothing host-facing depends on
     # that, so it's fine left alone; re-running this recipe just re-establishes it.
     # Uses the shared rootful $HOME -- confirm on a real boot.
+    # Ensure the wordlist packages are present before staging. Normally from
+    # spinofin-kali.ini; installed on demand here (container-local apt -- does not
+    # touch the host or the no-layering policy) so a missing tree becomes an
+    # install rather than a WARN + empty result. dpkg -s is checked (not the
+    # /usr/share path) so a tree this recipe has already relocated into $HOME --
+    # leaving /usr/share/seclists as a symlink -- is NOT treated as missing and
+    # needlessly reinstalled (~1GB).
+    distrobox enter --root {{ kali_box }} -- bash -lc '
+        set -euo pipefail
+        missing=()
+        for pkg in seclists wordlists; do
+            dpkg -s "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+        done
+        if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Installing missing container packages (~1GB+): ${missing[*]}"
+            sudo apt-get update -qq
+            sudo apt-get install -y "${missing[@]}"
+        fi
+    '
     distrobox enter --root {{ kali_box }} -- bash -lc 'set -euo pipefail; dest="$HOME/.local/share/spinofin/wordlists"; mkdir -p "$dest"; if [ -L /usr/share/seclists ]; then echo "seclists already linked"; elif [ -d /usr/share/seclists ]; then [ -e "$dest/seclists" ] || { echo "Copying seclists (one-time, ~1GB)..."; cp -a /usr/share/seclists "$dest/seclists"; }; sudo rm -rf /usr/share/seclists; sudo ln -sfn "$dest/seclists" /usr/share/seclists; echo "Linked /usr/share/seclists -> $dest/seclists"; else echo "WARN: /usr/share/seclists missing (run setup-kali first?)" >&2; fi; if [ -f /usr/share/wordlists/rockyou.txt.gz ]; then [ -f "$dest/rockyou.txt" ] || { echo "Decompressing rockyou.txt..."; gunzip -c /usr/share/wordlists/rockyou.txt.gz > "$dest/rockyou.txt"; }; elif [ -f /usr/share/wordlists/rockyou.txt ]; then cp -n /usr/share/wordlists/rockyou.txt "$dest/rockyou.txt"; else echo "WARN: rockyou not found under /usr/share/wordlists" >&2; fi; echo "Staged real files in $dest"'
     ln -sfn "$HOME/.local/share/spinofin/wordlists" "$HOME/wordlists"
     echo ""
@@ -587,6 +636,22 @@ setup-powerview:
     # /usr/local/bin is an entirely separate, untouched directory.
     # Idempotent: pipx install --force, ln -sf, and the export below all
     # handle re-runs cleanly.
+    # Ensure pipx and powerview's build deps are present. Normally from
+    # spinofin-kali.ini; installed on demand here (container-local apt -- does not
+    # touch the host or the no-layering policy) so this recipe doesn't fail with
+    # "pipx: not found" or a gssapi build error if the container drifted.
+    distrobox enter --root {{ kali_box }} -- bash -lc '
+        set -euo pipefail
+        missing=()
+        for pkg in pipx libkrb5-dev python3-dev; do
+            dpkg -s "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+        done
+        if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Installing missing container packages: ${missing[*]}"
+            sudo apt-get update -qq
+            sudo apt-get install -y "${missing[@]}"
+        fi
+    '
     distrobox enter --root {{ kali_box }} -- bash -lc '
         set -euo pipefail
         export PIPX_HOME="/opt/spinofin/pipx"
@@ -616,3 +681,67 @@ remove-kali:
     echo "Removing '{{ kali_box }}' ..."
     distrobox rm --root --force {{ kali_box }} || true
     echo "Removed."
+
+# Set the login shell inside the Kali toolbox container (bash, zsh, or fish)
+[group('Kali')]
+toggle-kali-shell:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v distrobox >/dev/null 2>&1; then
+        echo "ERROR: distrobox not found on host." >&2
+        exit 1
+    fi
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
+    echo "Which shell should '{{ kali_box }}' launch when you enter it?"
+    echo "  1. bash (default)"
+    echo "  2. zsh"
+    echo "  3. fish"
+    read -rp "Enter a number [1-3]: " choice
+    case "${choice}" in
+        1) shell_name="bash" ;;
+        2) shell_name="zsh" ;;
+        3) shell_name="fish" ;;
+        *)
+            echo "ERROR: invalid choice '${choice}' -- expected 1, 2, or 3." >&2
+            exit 1
+            ;;
+    esac
+    # Everything below runs INSIDE the rootful container. apt here is container-
+    # local -- it does not touch the host or the no-layering policy (same as the
+    # container side of `ujust toggle-nmap`). We install BEFORE switching on
+    # purpose: `distrobox enter` launches the container user's login shell, so
+    # pointing it at a shell that isn't installed would break `ujust enter-kali`
+    # itself (distrobox errors with "executable file not found"). The shell name
+    # is injected as an env var (validated to one of bash/zsh/fish above) to keep
+    # the in-container script free of nested quoting.
+    distrobox enter --root --additional-flags "--env SPINOFIN_SHELL=${shell_name}" {{ kali_box }} -- bash -lc '
+        set -euo pipefail
+        target_user="$(id -un)"
+        if ! command -v "$SPINOFIN_SHELL" >/dev/null 2>&1; then
+            echo "Installing $SPINOFIN_SHELL in the container (apt)..."
+            sudo apt-get update -qq
+            sudo apt-get install -y "$SPINOFIN_SHELL"
+        fi
+        shell_path="$(command -v "$SPINOFIN_SHELL" 2>/dev/null || true)"
+        if [ -z "$shell_path" ] || [ ! -x "$shell_path" ]; then
+            echo "ERROR: $SPINOFIN_SHELL did not install cleanly; leaving the shell unchanged." >&2
+            exit 1
+        fi
+        current="$(getent passwd "$target_user" | cut -d: -f7)"
+        if [ "$current" = "$shell_path" ]; then
+            echo "Container login shell already set to $shell_path."
+        else
+            sudo usermod -s "$shell_path" "$target_user"
+            echo "Set login shell for $target_user to $shell_path."
+        fi
+    '
+    echo ""
+    echo "Done. Run 'ujust enter-kali' to land in ${shell_name}."
+    echo "NOTE: zsh/fish here are container-local and are NOT declared in"
+    echo "custom/distrobox/spinofin-kali.ini, so 'ujust rebuild-kali' recreates the"
+    echo "container with its default shell (bash). Re-run 'ujust toggle-kali-shell'"
+    echo "after a rebuild if you want a non-default shell back."
