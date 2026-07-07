@@ -236,11 +236,8 @@ jobs:
       # images (built from the testing branch) are intentionally left unsigned.
       # Scheduled/dispatch runs on main are ref=refs/heads/main, so they sign too.
       # Requires 'id-token: write' (granted above).
-      # Non-fatal: signing runs AFTER push, so a failure never blocks or
-      # unpublishes the image -- it only marks the run failed.
       - name: Sign and publish
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        continue-on-error: true
         uses: projectbluefin/actions/bootc-build/sign-and-publish@8fd476d7ad4023d3bcb56481407913fd6cf73f60 # v1
         with:
           image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}
