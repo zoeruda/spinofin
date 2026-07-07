@@ -1,0 +1,23 @@
+name: Install Cosign
+description: |
+  Installs cosign onto PATH for image signing steps.
+
+  WHY THIS FILE EXISTS: the shared action we call from build-image.yml
+  (projectbluefin/actions/bootc-build/sign-and-publish) has an internal step
+  `uses: ./.github/actions/install-cosign`. A relative `./` path inside any
+  action -- composite or otherwise -- ALWAYS resolves against the CALLING
+  repository's own workspace, never against the called action's own
+  repository (this is a documented GitHub Actions limitation: see
+  actions/runner#2101 and actions/runner#1348). So every repository that
+  consumes bootc-build/sign-and-publish must carry its own local copy of this
+  folder at this exact path, or the step fails with:
+    Error: Can't find 'action.yml' ... under '.../.github/actions/install-cosign'
+  That failure was previously masked by `continue-on-error: true` on the
+  "Sign and publish" step in build-image.yml, so :stable was silently
+  publishing unsigned. Removing continue-on-error surfaced it. This file is
+  the actual fix -- see build-image.yml for the step that depends on it.
+runs:
+  using: composite
+  steps:
+    - name: Install cosign
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
