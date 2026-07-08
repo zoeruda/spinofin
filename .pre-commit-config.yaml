@@ -14,7 +14,7 @@ repos:
       - id: trailing-whitespace
         # The fastfetch ASCII logo is padded with significant trailing spaces to
         # keep its block rectangular; stripping them mangles the designed art.
-        exclude: '^custom/branding/system_files/usr/share/spinofin/fastfetch/'
+        exclude: '^custom/branding/system_files/etc/spinofin/fastfetch/'
 
   - repo: local
     hooks:

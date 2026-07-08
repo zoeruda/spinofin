@@ -1,4 +1,4 @@
 {
-	"logo-directory": "/usr/share/spinofin/fastfetch",
+	"logo-directory": "/etc/spinofin/fastfetch",
 	"shuffle-logo": true
 }
