@@ -1,10 +1,126 @@
 # spinofin default Flatpaks -- GUI apps installed on first boot.
 # INI format: one [Flatpak Preinstall <app-id>] group per app.
 # https://docs.flatpak.org/en/latest/flatpak-command-reference.html#flatpak-preinstall
+#
+# Entries below are split into two groups:
+#   1. Bluefin defaults -- the full set installed on a fresh ublue-os/bluefin
+#      system, confirmed via `flatpak list --system --app` on a live install
+#      (2026-07). Declared here so a fresh spinofin ISO install gets the same
+#      baseline as a rebase from an existing Bluefin system (rebases keep
+#      these because /var/lib/flatpak persists across an image swap; a
+#      from-scratch ISO install does not unless this image declares them
+#      itself).
+#   2. spinofin additions -- our own apps, appended below, that aren't
+#      already covered by the Bluefin defaults above.
 
-# Flatpak permission manager
+### --- Bluefin defaults (verified via `flatpak list --system` on a fresh install) ---
+
+[Flatpak Preinstall com.github.PintaProject.Pinta]
+Branch=stable
+
+[Flatpak Preinstall io.github.kolunmi.Bazaar]
+Branch=stable
+
 [Flatpak Preinstall com.github.tchx84.Flatseal]
 Branch=stable
+
+[Flatpak Preinstall com.mattjakeman.ExtensionManager]
+Branch=stable
+
+[Flatpak Preinstall com.ranfdev.DistroShelf]
+Branch=stable
+
+[Flatpak Preinstall io.github.flattool.Ignition]
+Branch=stable
+
+[Flatpak Preinstall io.github.flattool.Warehouse]
+Branch=stable
+
+[Flatpak Preinstall io.gitlab.adhami3310.Impression]
+Branch=stable
+
+[Flatpak Preinstall io.missioncenter.MissionCenter]
+Branch=stable
+
+[Flatpak Preinstall it.mijorus.smile]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Calculator]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Calendar]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Characters]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Connections]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Contacts]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.DejaDup]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.FileRoller]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Firmware]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Logs]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Loupe]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Maps]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.NautilusPreviewer]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Papers]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Showtime]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.SimpleScan]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Snapshot]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.SoundRecorder]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.TextEditor]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Weather]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.baobab]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.clocks]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.font-viewer]
+Branch=stable
+
+[Flatpak Preinstall org.mozilla.Thunderbird]
+Branch=stable
+
+[Flatpak Preinstall org.mozilla.firefox]
+Branch=stable
+
+[Flatpak Preinstall page.tesk.Refine]
+Branch=stable
+
+### --- spinofin additions (not already covered by Bluefin defaults above) ---
 
 # Protocol analyzer. Flathub build opens existing pcaps only -- no live capture
 # (that needs privileged dumpcap; run wireshark inside the Kali container).
@@ -31,9 +147,3 @@ Branch=stable
 # Remote desktop client (RDP / VNC / SSH). Sandbox may block ~/.ssh -- grant via Flatseal if needed.
 [Flatpak Preinstall org.remmina.Remmina]
 Branch=stable
-
-# Examples -- uncomment to install on first boot:
-;[Flatpak Preinstall org.mozilla.firefox]
-;Branch=stable
-;[Flatpak Preinstall org.gnome.Calculator]
-;Branch=stable
