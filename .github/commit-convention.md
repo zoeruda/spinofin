@@ -76,9 +76,9 @@ Update bootc switch URL to point to ghcr.io/username/repo
 ### Workflow Changes
 
 ```
-ci(workflow): enable automatic ISO builds
+ci(workflow): tighten timeout on validate-brewfiles job
 
-Configure build-disk.yml to trigger on main branch pushes
+Reduce the job timeout from 10m to 5m to fail faster on hangs
 ```
 
 ### Metadata Updates

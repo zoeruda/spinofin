@@ -20,45 +20,51 @@ Select the configuration file that matches your preferred storage provider. Each
 - Required GitHub secrets
 - Provider-specific configuration options
 
-### 2. Set Up GitHub Secrets
+### 2. Building ISO/Disk Images (Manual, Local Process)
 
-For the ISO build workflow to upload files, you need to configure GitHub secrets:
+**There is currently no `build-disk.yml` GitHub Actions workflow in this repository** — ISO and disk image building is a manual, local process using [`bootc-image-builder`](https://github.com/osbuild/bootc-image-builder) against `iso/iso.toml` (Anaconda installer ISO) or `iso/disk.toml` (qcow2/raw/other disk formats). If you'd like CI-automated builds and uploads, that would need to be built as a new workflow — see "Automating This" below.
 
-1. Go to your repository on GitHub
-2. Navigate to **Settings** → **Secrets and variables** → **Actions**
-3. Click **New repository secret**
-4. Add the secrets required by your chosen provider (listed in the config file)
+Example, run locally with root/privileged Podman **from the repository root** (adjust the image reference for your fork). Two things this needs that are easy to miss:
 
-### 3. Choose Your Upload Method
+- **Pull the image into local root storage first.** `bootc-image-builder` reads from the container storage mounted at `/var/lib/containers/storage` — it does not pull the target image itself, so `sudo podman pull` your image before running the build, or it won't find it.
+- **`--rootfs btrfs`.** Fedora-based bootc images generally don't embed a default root filesystem type, so `bootc-image-builder` requires `--rootfs` to be set explicitly (`error: cannot build manifest: no default root filesystem type specified`). Fedora's desktop variants (Workstation, Silverblue — what Bluefin/spinofin are built on) have defaulted to `btrfs` since Fedora 33; Fedora Server/CoreOS default to `xfs` instead, which is a different lineage and not what you want here.
 
-The build-disk.yml workflow supports two upload methods:
+```bash
+sudo podman pull ghcr.io/zoeruda/spinofin:stable
 
-#### Method A: Using rclone configs (Recommended)
-
-This method uses the configuration files in this directory:
-
-```yaml
-# In .github/workflows/build-disk.yml, the workflow will:
-# 1. Read the config from this directory
-# 2. Substitute secrets automatically
-# 3. Upload using rclone
+mkdir -p output
+sudo podman run --rm -it --privileged --pull=newer \
+  --network=host \
+  --security-opt label=type:unconfined_t \
+  -v ./iso/iso.toml:/config.toml:ro \
+  -v ./output:/output \
+  -v /var/lib/containers/storage:/var/lib/containers/storage \
+  quay.io/centos-bootc/bootc-image-builder:latest \
+  --type anaconda-iso \
+  --rootfs btrfs \
+  --config /config.toml \
+  ghcr.io/zoeruda/spinofin:stable
 ```
 
-To use this method, specify which config to use when triggering the workflow.
+Use `--config iso/disk.toml` with `--type qcow2` (or `raw`, `vmdk`, `vhd`) to build a disk/VM image instead of an installer ISO. See the [bootc-image-builder documentation](https://github.com/osbuild/bootc-image-builder) for the full set of supported `--type` values and options.
 
-#### Method B: Direct environment variables (Legacy)
+### 3. Uploading the Result (Manual, Using These Configs)
 
-The workflow also supports direct environment variable configuration for backward compatibility.
+The rclone configuration files in this directory are templates for uploading whatever `bootc-image-builder` produces in `output/` to cloud storage — they are not currently wired into any CI workflow. To use one manually:
 
-### 4. Triggering the Workflow
+```bash
+mkdir -p ~/.config/rclone
+cp iso/rclone/cloudflare-r2.conf ~/.config/rclone/rclone.conf
+# Edit ~/.config/rclone/rclone.conf and replace each ${SECRET_NAME}
+# placeholder with your actual credential -- do NOT commit this edited copy.
+rclone copy ./output/ cloudflare-r2:your-bucket-name/
+```
 
-The `build-disk.yml` workflow is triggered manually:
+Swap in whichever provider's `.conf` file matches your setup (`aws-s3.conf`, `backblaze-b2.conf`, `sftp.conf`, `scp.conf`).
 
-1. Go to **Actions** tab in your repository
-2. Select **Build disk images** workflow
-3. Click **Run workflow**
-4. Select the platform (amd64 or arm64)
-5. Enable **Upload to cloud storage** if you want to upload the ISO
+### Automating This
+
+If you want CI to build and upload images automatically on a schedule or dispatch trigger, that requires a new `build-disk.yml` workflow that runs `bootc-image-builder` (as a privileged container step) and then `rclone copy` with secrets substituted from GitHub Actions secrets. This isn't implemented in spinofin today; treat the steps above as the manual equivalent until/unless that workflow is written.
 
 ## Configuration File Format
 
