@@ -103,6 +103,7 @@ setup-kali:
     echo "  ujust setup-metasploit   # initialize the Metasploit database"
     echo "  ujust setup-bloodhound   # install + provision BloodHound CE"
     echo "  ujust setup-powerview    # install powerview.py via container-local pipx"
+    echo "  ujust setup-kerbrute     # install kerbrute via container-local go install"
     echo "  ujust export-impacket    # surface impacket-* scripts to your host shell"
     echo "  ujust link-wordlists     # stage real wordlist files for host-native tools"
     echo "  ujust toggle-nmap        # choose where nmap lives (container/host/both/none)"
@@ -311,6 +312,7 @@ rebuild-kali:
     echo "  ujust setup-metasploit   # re-initialize the Metasploit database"
     echo "  ujust setup-bloodhound   # re-install + provision BloodHound CE"
     echo "  ujust setup-powerview    # re-install powerview.py via container-local pipx"
+    echo "  ujust setup-kerbrute     # re-install kerbrute via container-local go install"
     echo "  ujust export-impacket    # re-surface impacket-* scripts to your host shell"
     echo "  ujust toggle-nmap        # re-choose where nmap lives (container/host/both/none)"
 
@@ -672,6 +674,77 @@ setup-powerview:
     echo "  powerview --help        # from your host shell directly"
     echo "  kali powerview --help   # equivalent, using the kali alias"
     echo "  ujust enter-kali        # then: powerview --help"
+
+# Install kerbrute (ropnop/kerbrute) inside the container via go install (re-runnable)
+[group('Kali')]
+setup-kerbrute:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
+    echo "Installing kerbrute inside '{{ kali_box }}' via container-local go install..."
+    # kerbrute has no Kali apt package -- upstream only ships GitHub release
+    # binaries and `go install`. golang-go is baked into the container's
+    # additional_packages specifically to make this work (mirrors
+    # libkrb5-dev/python3-dev/pipx for setup-powerview above); "go install ...
+    # for the go package inside the container" keeps the host free of a second
+    # package manager (no host-side go/brew formula for this).
+    #
+    # ISOLATED GOPATH/GOBIN: distrobox shares $HOME between host and this
+    # rootful container by default. go's default GOPATH ($HOME/go) would land
+    # under that shared $HOME -- not a bin-dir collision like pipx's (the host
+    # has no go toolchain of its own here), but it would still leak the
+    # container's module cache/build artifacts into the host-visible home
+    # directory for no reason. We redirect GOPATH/GOBIN to /opt/spinofin/go,
+    # which lives in the container's OWN root filesystem -- NOT under $HOME,
+    # so it stays invisible to the host (distrobox does not share /opt, only
+    # $HOME) -- same isolation approach as PIPX_HOME/PIPX_BIN_DIR above.
+    #
+    # /usr/local/bin SYMLINK: same reasoning as powerview -- a non-interactive
+    # `kali kerbrute ...` call doesn't source ~/.bashrc, so a plain GOBIN PATH
+    # addition there would be invisible to it. /usr/local/bin is on the
+    # system's default PATH unconditionally, so a single symlink there makes
+    # `kerbrute` reachable everywhere INSIDE the container regardless of shell
+    # invocation style. The container's /usr/local/bin is part of its own
+    # private root filesystem, so this is still container-only.
+    # Idempotent: `go install ...@latest`, `ln -sf`, and the export below all
+    # handle re-runs cleanly.
+    # Ensure go is present before installing. Normally from spinofin-kali.ini;
+    # installed on demand here (container-local apt -- does not touch the host
+    # or the no-layering policy) so this recipe doesn't fail with "go: command
+    # not found" if the container drifted -- this is the "verify installation
+    # in the script" step, not just a declared package.
+    distrobox enter --root {{ kali_box }} -- bash -lc '
+        set -euo pipefail
+        if ! command -v go >/dev/null 2>&1; then
+            echo "Installing missing container package: golang-go"
+            sudo apt-get update -qq
+            sudo apt-get install -y golang-go
+        fi
+    '
+    distrobox enter --root {{ kali_box }} -- bash -lc '
+        set -euo pipefail
+        export GOPATH="/opt/spinofin/go"
+        export GOBIN="/opt/spinofin/go/bin"
+        sudo mkdir -p "$GOPATH" "$GOBIN"
+        sudo chown -R "$(id -u):$(id -g)" "$GOPATH"
+        go install github.com/ropnop/kerbrute@latest
+        sudo ln -sf "$GOBIN/kerbrute" /usr/local/bin/kerbrute
+        # Export the /usr/local/bin symlink (not the GOBIN target directly)
+        # to the host, same rootful distrobox-export path as export-impacket,
+        # the setup-metasploit exports, and setup-powerview. Only possible
+        # failure here is a re-export of an identical wrapper, hence || true.
+        distrobox-export --bin /usr/local/bin/kerbrute --export-path "$HOME/.local/bin" >/dev/null 2>&1 || true
+    '
+    echo ""
+    echo "Done. kerbrute is now on PATH everywhere inside the container, AND"
+    echo "exported straight to your host shell:"
+    echo "  kerbrute --help        # from your host shell directly"
+    echo "  kali kerbrute --help   # equivalent, using the kali alias"
+    echo "  ujust enter-kali       # then: kerbrute --help"
 
 # Remove the Kali toolbox container entirely
 [group('Kali')]
