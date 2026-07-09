@@ -54,8 +54,18 @@ Author two masters, then derive every raster/variant from them:
 ### 4. fastfetch terminal logo
 
 `/etc/ublue-os/fastfetch.json` points `logo-directory` at
-`/usr/share/spinofin/fastfetch/` (single file) instead of
+`/etc/spinofin/fastfetch/` (single file: `spinofin-ascii.txt`) instead of
 Bluefin's rotating dino set.
+
+This asset is deliberately placed under `/etc`, not `/usr/share`, unlike
+every other slot in this document. `/etc` is 3-way merged on `bootc switch`
+(see "`bootc switch` constraints" below), so `system_files/etc/...` here only
+*seeds* the file on first deploy/rebase -- once it exists, a user is free to
+edit `/etc/spinofin/fastfetch/spinofin-ascii.txt` directly (or drop
+additional `*.txt`/image files alongside it; `shuffle-logo: true` picks
+randomly among whatever's in the directory), and ostree will not clobber
+those local changes on a later image update. Restoring the shipped default
+is as easy as overwriting the file with this repo's version.
 
 ### 5. About / "System Details" logo
 
@@ -97,10 +107,14 @@ mechanism is confirmed.
 The primary delivery path is rebasing an existing Bluefin install, which
 shapes how this has to work:
 
-- **`/usr` is fully replaced** → os-release, icons, Plymouth watermark, the
-  regenerated initramfs, and the fastfetch logo all apply cleanly.
-- **`/etc` is 3-way merged** → our new dconf keyfiles are added (why GDM +
-  fastfetch work); `dconf-update.service` recompiles the dbs on boot.
+- **`/usr` is fully replaced** → os-release, icons, Plymouth watermark, and the
+  regenerated initramfs all apply cleanly.
+- **`/etc` is 3-way merged** → our new dconf keyfiles are added (why GDM
+  works) and `dconf-update.service` recompiles the dbs on boot. The fastfetch
+  ASCII logo (`/etc/spinofin/fastfetch/spinofin-ascii.txt`) lives here too,
+  specifically *because* of this merge behavior: it seeds on first deploy but
+  a user's later edits to it survive subsequent `bootc upgrade`s, unlike
+  everything in the `/usr` bullet above.
 - **`/home` and the per-user dconf db are untouched** → a plain system default
   can't override a value the prior Bluefin setup already wrote into the
   user's dconf. That's why the panel logo needs a **lock**, not just a
@@ -116,4 +130,4 @@ shapes how this has to work:
 - **About logo:** comes from the compiled-in pixmaps, not os-release `LOGO`. Confirm `fedora_logo_med.png`/`fedora_whitelogo_med.png` are the spinofin wordmarks.
 - **Panel logo:** check `cat /etc/dconf/db/distro.d/99-spinofin-branding` and which extension is live.
 - **Plymouth:** if the boot splash still shows Bluefin, the initramfs wasn't regenerated — confirm `16-initramfs.sh` ran.
-- **fastfetch** renders monochrome (the `ublue-fastfetch` wrapper doesn't pass `--logo-color-N`). Delete `etc/ublue-os/fastfetch.json` to restore Bluefin's dino shuffle.
+- **fastfetch** renders monochrome (the `ublue-fastfetch` wrapper doesn't pass `--logo-color-N`).
