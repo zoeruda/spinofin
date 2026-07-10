@@ -106,126 +106,8 @@ setup-kali:
     echo "  ujust setup-kerbrute     # install kerbrute via container-local go install"
     echo "  ujust export-impacket    # surface impacket-* scripts to your host shell"
     echo "  ujust link-wordlists     # stage real wordlist files for host-native tools"
-    echo "  ujust toggle-nmap        # choose where nmap lives (container/host/both/none)"
     echo "  ujust enter-kali         # drop into the container directly"
     echo "Run 'ujust --list' to see all available Kali recipes."
-
-# Choose where nmap is installed: container-only (default), host-only, both, or none
-[group('Kali')]
-toggle-nmap:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # nmap is baked into custom/distrobox/spinofin-kali.ini's additional_packages
-    # (container side) AND is a real `depends_on "nmap"` of rustscan's
-    # homebrew-core formula (host side, via custom/brew/default.Brewfile) -- so
-    # "both" is the state a totally fresh setup/install-default-apps gives you
-    # with zero extra steps; that's why it's the default below, not container-
-    # only. This recipe manages the LIVE state on each side; it does not edit
-    # either source of truth, so re-provisioning from either one brings its
-    # copy of nmap back regardless of what you picked here (see the notes at
-    # the end).
-    echo "Where do you want nmap installed?"
-    echo "  1. Both (default): brew's rustscan formula pulls in host nmap as a"
-    echo "     real dependency anyway, so this is the natural resting state --"
-    echo "     host nmap gets unprivileged connect scans (-sT) via brew, and"
-    echo "     the container keeps full raw-socket scans (-sS, -O, --script)"
-    echo "     via CAP_NET_RAW, run with the 'kali' alias."
-    echo "  2. Container-only: full raw-socket scans (-sS, -O, --script) via"
-    echo "     CAP_NET_RAW, run with the 'kali' alias -- recommended if you"
-    echo "     want full scan capability without a duplicate host copy."
-    echo "  3. Host-only: unprivileged connect scans only (-sT), no raw"
-    echo "     sockets -- recommended for rustscan integration."
-    echo "  4. None: bring your own scanner"
-    read -rp "Enter a number [1-4]: " choice
-    case "${choice}" in
-        1) want_host=1; want_container=1 ;;
-        2) want_host=0; want_container=1 ;;
-        3) want_host=1; want_container=0 ;;
-        4) want_host=0; want_container=0 ;;
-        *)
-            echo "ERROR: invalid choice '${choice}' -- expected 1, 2, 3, or 4." >&2
-            exit 1
-            ;;
-    esac
-
-    # --- Host side (brew; user-scoped, runtime-only, not baked into the image) ---
-    if [ "${want_host}" -eq 1 ]; then
-        if ! command -v brew >/dev/null 2>&1; then
-            echo "ERROR: brew not found on host. Run 'ujust install-default-apps'" >&2
-            echo "(or install Homebrew) first, then re-run 'ujust toggle-nmap'." >&2
-            exit 1
-        fi
-        if brew list --formula nmap >/dev/null 2>&1; then
-            echo "Host nmap: already installed (brew)."
-        else
-            echo "Installing host nmap (brew) -- unprivileged connect scans only (-sT)..."
-            brew install nmap
-        fi
-    else
-        if command -v brew >/dev/null 2>&1 && brew list --formula nmap >/dev/null 2>&1; then
-            echo "Removing host nmap (brew)..."
-            # --ignore-dependencies: rustscan's homebrew-core formula declares a
-            # real `depends_on "nmap"` (it auto-execs nmap on the ports it finds --
-            # see the Brewfile's rustscan note), so a plain `brew uninstall nmap`
-            # refuses with "nmap is a dependency of rustscan" while rustscan is
-            # installed. This only skips brew's own dependency check; it does not
-            # touch rustscan, which still works standalone (`--scripts none` or
-            # piping into the container's nmap -- see that same Brewfile note).
-            brew uninstall --ignore-dependencies nmap
-        else
-            echo "Host nmap: already absent."
-        fi
-    fi
-
-    # --- Container side (apt inside the rootful spinofin-kali container) ---
-    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
-        if [ "${want_container}" -eq 1 ]; then
-            echo "NOTE: container '{{ kali_box }}' doesn't exist yet. nmap is already"
-            echo "baked into its manifest, so it will be present as soon as you run"
-            echo "'ujust setup-kali' -- nothing more to do here."
-        else
-            echo "NOTE: container '{{ kali_box }}' doesn't exist yet -- skipping the container side."
-        fi
-    else
-        if [ "${want_container}" -eq 1 ]; then
-            distrobox enter --root {{ kali_box }} -- bash -lc '
-                if command -v nmap >/dev/null 2>&1; then
-                    echo "Container nmap: already installed."
-                else
-                    echo "Installing container nmap (apt, CAP_NET_RAW available)..."
-                    sudo apt-get update -qq
-                    sudo apt-get install -y nmap
-                fi
-            '
-        else
-            distrobox enter --root {{ kali_box }} -- bash -lc '
-                if command -v nmap >/dev/null 2>&1; then
-                    echo "Removing container nmap..."
-                    sudo apt-get remove -y nmap
-                else
-                    echo "Container nmap: already absent."
-                fi
-            '
-        fi
-    fi
-
-    echo ""
-    echo "Done."
-    if [ "${want_host}" -eq 0 ]; then
-        echo "NOTE: rustscan's homebrew-core formula declares a real dependency on"
-        echo "nmap, so 'ujust install-default-apps' (or 'install-all-brew') will pull"
-        echo "host nmap back in the next time you run it -- that recipe now detects"
-        echo "and repairs formulas with missing dependencies (via 'brew missing')."
-        echo "Re-run 'ujust toggle-nmap' afterward if you want it removed again."
-    fi
-    if [ "${want_container}" -eq 0 ]; then
-        echo "NOTE: nmap is still declared in custom/distrobox/spinofin-kali.ini's"
-        echo "additional_packages, so 'ujust rebuild-kali' will reinstall it in the"
-        echo "container (the manifest is the source of truth). 'ujust setup-kali'"
-        echo "never touches an existing container, so it won't bring it back on its"
-        echo "own. Re-run 'ujust toggle-nmap' after a rebuild if you want it removed"
-        echo "again."
-    fi
 
 # Enter an interactive shell in the Kali toolbox container
 [group('Kali')]
@@ -314,7 +196,64 @@ rebuild-kali:
     echo "  ujust setup-powerview    # re-install powerview.py via container-local pipx"
     echo "  ujust setup-kerbrute     # re-install kerbrute via container-local go install"
     echo "  ujust export-impacket    # re-surface impacket-* scripts to your host shell"
-    echo "  ujust toggle-nmap        # re-choose where nmap lives (container/host/both/none)"
+
+# Upgrade the Kali container's apt tooling in place (non-destructive; keeps your data)
+[group('Kali')]
+upgrade-kali:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
+    # NON-DESTRUCTIVE UPDATE PATH. `rebuild-kali` is the only OTHER way to get
+    # newer tools, but it is --replace: it destroys and recreates the container,
+    # wiping everything not baked into the manifest -- the msfdb database, the
+    # BloodHound/neo4j databases, the container-local powerview/kerbrute installs,
+    # any kali-tools-* families you pulled, your toggle-kali-shell choice, and so
+    # on. This recipe instead upgrades the EXISTING container in place with apt,
+    # so none of that state is touched: `apt-get full-upgrade` rewrites installed
+    # packages but never clears the PostgreSQL/neo4j data directories, so your
+    # Metasploit and BloodHound data survive. Use this to stay current on
+    # kali-rolling; reach for rebuild-kali only when you actually want a
+    # clean-slate container.
+    #
+    # Covers every apt-managed tool in one pass: the manifest's additional_packages
+    # (metasploit-framework, netexec, sqlmap, impacket-scripts, ...) AND any
+    # `ujust install-kali-<family>` metapackages, since those are all apt packages
+    # in this same container. Runs as root via distrobox's passwordless sudo, with
+    # DEBIAN_FRONTEND=noninteractive so a package's post-install prompt (e.g.
+    # wireshark's "allow non-root capture?") takes its default instead of hanging.
+    #
+    # WHAT THIS DELIBERATELY DOES NOT UPGRADE: powerview and kerbrute. Neither is
+    # an apt package (powerview is a container-local pipx install, kerbrute a
+    # container-local `go install`), so apt does not manage them and this pass
+    # leaves them alone by construction -- but that is also INTENTIONAL, not just
+    # incidental. Both are pinned to a specific upstream commit in setup-powerview
+    # / setup-kerbrute as a supply-chain measure, and neither gains features often
+    # enough to chase. So do NOT add a `pipx upgrade`/`go install ...@latest` step
+    # here. To move either one, bump its pinned SHA in its setup recipe and re-run
+    # that recipe (`ujust setup-powerview` / `ujust setup-kerbrute`).
+    echo "Upgrading apt tooling inside '{{ kali_box }}' (this can take a while)..."
+    distrobox enter --root {{ kali_box }} -- sudo bash -lc '
+        set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update
+        apt-get -y full-upgrade
+        # Drop now-orphaned dependencies left behind by past upgrades. autoremove
+        # only removes packages nothing else needs; anything installed explicitly
+        # (the manifest packages, the kali-tools-* families) is marked manual and
+        # is never autoremoved, so this will not quietly uninstall your tools.
+        apt-get -y autoremove
+        apt-get -y clean
+    '
+    echo ""
+    echo "Done. The container's apt tools are up to date, and your case data"
+    echo "(Metasploit / BloodHound databases) is untouched."
+    echo "NOTE: powerview and kerbrute are intentionally NOT upgraded here -- they"
+    echo "are pinned to a fixed commit (see setup-powerview / setup-kerbrute)."
+    echo "Bump the SHA in those recipes and re-run them to move either one."
 
 # Initialize the Metasploit PostgreSQL database inside the container (run ONCE)
 [group('Kali')]
@@ -328,8 +267,8 @@ setup-metasploit:
     fi
     # Ensure this recipe's container packages are present. Normally they come
     # from spinofin-kali.ini at assemble time; installing on demand here (same
-    # container-local apt path as toggle-nmap/setup-bloodhound -- does not touch
-    # the host or the no-layering policy) makes the recipe self-sufficient if the
+    # container-local apt path as setup-bloodhound -- does not touch the host or
+    # the no-layering policy) makes the recipe self-sufficient if the
     # container drifted or the .ini was edited without a rebuild. dpkg -s (not
     # command -v) so metapackages/data packages are detected by package name.
     distrobox enter --root {{ kali_box }} -- bash -lc '
@@ -660,7 +599,15 @@ setup-powerview:
         export PIPX_BIN_DIR="/opt/spinofin/pipx/bin"
         sudo mkdir -p "$PIPX_HOME" "$PIPX_BIN_DIR"
         sudo chown -R "$(id -u):$(id -g)" "$PIPX_HOME"
-        pipx install --force "git+https://github.com/aniqfakhrul/powerview.py"
+        # SUPPLY-CHAIN PIN: install from a fixed commit, not the moving default
+        # branch. The install is then reproducible -- a re-run, or a
+        # `rebuild-kali`, always fetches the exact same reviewed code instead of
+        # whatever upstream HEAD is at the time. powerview is also deliberately
+        # left OUT of `ujust upgrade-kali` (it is not an apt package and is not
+        # re-pulled on upgrade), so once installed it stays frozen at this commit
+        # until the SHA below is changed on purpose. To move it: update the SHA
+        # here and re-run `ujust setup-powerview` (or `ujust rebuild-kali`).
+        pipx install --force "git+https://github.com/aniqfakhrul/powerview.py@1dfc473c98ccca686e3504af66a9c2f097fddbe9"
         sudo ln -sf "$PIPX_BIN_DIR/powerview" /usr/local/bin/powerview
         # Export the /usr/local/bin symlink (not the PIPX_BIN_DIR target
         # directly) to the host, same rootful distrobox-export path as
@@ -710,8 +657,8 @@ setup-kerbrute:
     # `kerbrute` reachable everywhere INSIDE the container regardless of shell
     # invocation style. The container's /usr/local/bin is part of its own
     # private root filesystem, so this is still container-only.
-    # Idempotent: `go install ...@latest`, `ln -sf`, and the export below all
-    # handle re-runs cleanly.
+    # Idempotent: `go install ...@<pinned-sha>`, `ln -sf`, and the export below
+    # all handle re-runs cleanly.
     # Ensure go is present before installing. Normally from spinofin-kali.ini;
     # installed on demand here (container-local apt -- does not touch the host
     # or the no-layering policy) so this recipe doesn't fail with "go: command
@@ -731,7 +678,13 @@ setup-kerbrute:
         export GOBIN="/opt/spinofin/go/bin"
         sudo mkdir -p "$GOPATH" "$GOBIN"
         sudo chown -R "$(id -u):$(id -g)" "$GOPATH"
-        go install github.com/ropnop/kerbrute@latest
+        # SUPPLY-CHAIN PIN: build a fixed commit, not @latest. Same rationale as
+        # setup-powerview -- the install is reproducible, and kerbrute is
+        # deliberately left OUT of `ujust upgrade-kali` (not an apt package; not
+        # re-pulled on upgrade), so it stays frozen at this commit until the SHA
+        # below is changed on purpose. To move it: update the SHA here and re-run
+        # `ujust setup-kerbrute` (or `ujust rebuild-kali`).
+        go install github.com/ropnop/kerbrute@9cfb81e4fab8037acb44c678773ca3f93bc2b39c
         sudo ln -sf "$GOBIN/kerbrute" /usr/local/bin/kerbrute
         # Export the /usr/local/bin symlink (not the GOBIN target directly)
         # to the host, same rootful distrobox-export path as export-impacket,
@@ -755,9 +708,9 @@ remove-kali:
     distrobox rm --root --force {{ kali_box }} || true
     echo "Removed."
 
-# Set the login shell inside the Kali toolbox container (bash, zsh, or fish)
+# Set the login shell inside the Kali toolbox container (bash/zsh/fish; scriptable: `ujust toggle-kali-shell zsh`)
 [group('Kali')]
-toggle-kali-shell:
+toggle-kali-shell shell="":
     #!/usr/bin/env bash
     set -euo pipefail
     if ! command -v distrobox >/dev/null 2>&1; then
@@ -769,23 +722,38 @@ toggle-kali-shell:
         echo "Run 'ujust setup-kali' first to provision it." >&2
         exit 1
     fi
-    echo "Which shell should '{{ kali_box }}' launch when you enter it?"
-    echo "  1. bash (default)"
-    echo "  2. zsh"
-    echo "  3. fish"
-    read -rp "Enter a number [1-3]: " choice
-    case "${choice}" in
-        1) shell_name="bash" ;;
-        2) shell_name="zsh" ;;
-        3) shell_name="fish" ;;
-        *)
-            echo "ERROR: invalid choice '${choice}' -- expected 1, 2, or 3." >&2
-            exit 1
-            ;;
-    esac
+    # INPUT: an optional argument (`ujust toggle-kali-shell zsh`) makes this
+    # non-interactive for scripted provisioning; validated against the same
+    # bash/zsh/fish allowlist as the menu. With no argument we fall back to the
+    # interactive prompt, so the bare `ujust toggle-kali-shell` UX is unchanged.
+    requested="{{ shell }}"
+    if [ -n "${requested}" ]; then
+        case "${requested}" in
+            bash | zsh | fish) shell_name="${requested}" ;;
+            *)
+                echo "ERROR: invalid shell '${requested}' -- expected bash, zsh, or fish." >&2
+                exit 1
+                ;;
+        esac
+    else
+        echo "Which shell should '{{ kali_box }}' launch when you enter it?"
+        echo "  1. bash (default)"
+        echo "  2. zsh"
+        echo "  3. fish"
+        read -rp "Enter a number [1-3]: " choice
+        case "${choice}" in
+            1) shell_name="bash" ;;
+            2) shell_name="zsh" ;;
+            3) shell_name="fish" ;;
+            *)
+                echo "ERROR: invalid choice '${choice}' -- expected 1, 2, or 3." >&2
+                exit 1
+                ;;
+        esac
+    fi
     # Everything below runs INSIDE the rootful container. apt here is container-
     # local -- it does not touch the host or the no-layering policy (same as the
-    # container side of `ujust toggle-nmap`). We install BEFORE switching on
+    # other Kali recipes' container-side apt). We install BEFORE switching on
     # purpose: `distrobox enter` launches the container user's login shell, so
     # pointing it at a shell that isn't installed would break `ujust enter-kali`
     # itself (distrobox errors with "executable file not found"). The shell name
