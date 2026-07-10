@@ -316,6 +316,64 @@ rebuild-kali:
     echo "  ujust export-impacket    # re-surface impacket-* scripts to your host shell"
     echo "  ujust toggle-nmap        # re-choose where nmap lives (container/host/both/none)"
 
+# Upgrade the Kali container's apt tooling in place (non-destructive; keeps your data)
+[group('Kali')]
+upgrade-kali:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
+    # NON-DESTRUCTIVE UPDATE PATH. `rebuild-kali` is the only OTHER way to get
+    # newer tools, but it is --replace: it destroys and recreates the container,
+    # wiping everything not baked into the manifest -- the msfdb database, the
+    # BloodHound/neo4j databases, the container-local powerview/kerbrute installs,
+    # any kali-tools-* families you pulled, your toggle-kali-shell choice, and so
+    # on. This recipe instead upgrades the EXISTING container in place with apt,
+    # so none of that state is touched: `apt-get full-upgrade` rewrites installed
+    # packages but never clears the PostgreSQL/neo4j data directories, so your
+    # Metasploit and BloodHound data survive. Use this to stay current on
+    # kali-rolling; reach for rebuild-kali only when you actually want a
+    # clean-slate container.
+    #
+    # Covers every apt-managed tool in one pass: the manifest's additional_packages
+    # (metasploit-framework, netexec, sqlmap, impacket-scripts, ...) AND any
+    # `ujust install-kali-<family>` metapackages, since those are all apt packages
+    # in this same container. Runs as root via distrobox's passwordless sudo, with
+    # DEBIAN_FRONTEND=noninteractive so a package's post-install prompt (e.g.
+    # wireshark's "allow non-root capture?") takes its default instead of hanging.
+    #
+    # WHAT THIS DELIBERATELY DOES NOT UPGRADE: powerview and kerbrute. Neither is
+    # an apt package (powerview is a container-local pipx install, kerbrute a
+    # container-local `go install`), so apt does not manage them and this pass
+    # leaves them alone by construction -- but that is also INTENTIONAL, not just
+    # incidental. Both are pinned to a specific upstream commit in setup-powerview
+    # / setup-kerbrute as a supply-chain measure, and neither gains features often
+    # enough to chase. So do NOT add a `pipx upgrade`/`go install ...@latest` step
+    # here. To move either one, bump its pinned SHA in its setup recipe and re-run
+    # that recipe (`ujust setup-powerview` / `ujust setup-kerbrute`).
+    echo "Upgrading apt tooling inside '{{ kali_box }}' (this can take a while)..."
+    distrobox enter --root {{ kali_box }} -- sudo bash -lc '
+        set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update
+        apt-get -y full-upgrade
+        # Drop now-orphaned dependencies left behind by past upgrades. autoremove
+        # only removes packages nothing else needs; anything installed explicitly
+        # (the manifest packages, the kali-tools-* families) is marked manual and
+        # is never autoremoved, so this will not quietly uninstall your tools.
+        apt-get -y autoremove
+        apt-get -y clean
+    '
+    echo ""
+    echo "Done. The container's apt tools are up to date, and your case data"
+    echo "(Metasploit / BloodHound databases) is untouched."
+    echo "NOTE: powerview and kerbrute are intentionally NOT upgraded here -- they"
+    echo "are pinned to a fixed commit (see setup-powerview / setup-kerbrute)."
+    echo "Bump the SHA in those recipes and re-run them to move either one."
+
 # Initialize the Metasploit PostgreSQL database inside the container (run ONCE)
 [group('Kali')]
 setup-metasploit:
@@ -660,7 +718,15 @@ setup-powerview:
         export PIPX_BIN_DIR="/opt/spinofin/pipx/bin"
         sudo mkdir -p "$PIPX_HOME" "$PIPX_BIN_DIR"
         sudo chown -R "$(id -u):$(id -g)" "$PIPX_HOME"
-        pipx install --force "git+https://github.com/aniqfakhrul/powerview.py"
+        # SUPPLY-CHAIN PIN: install from a fixed commit, not the moving default
+        # branch. The install is then reproducible -- a re-run, or a
+        # `rebuild-kali`, always fetches the exact same reviewed code instead of
+        # whatever upstream HEAD is at the time. powerview is also deliberately
+        # left OUT of `ujust upgrade-kali` (it is not an apt package and is not
+        # re-pulled on upgrade), so once installed it stays frozen at this commit
+        # until the SHA below is changed on purpose. To move it: update the SHA
+        # here and re-run `ujust setup-powerview` (or `ujust rebuild-kali`).
+        pipx install --force "git+https://github.com/aniqfakhrul/powerview.py@1dfc473c98ccca686e3504af66a9c2f097fddbe9"
         sudo ln -sf "$PIPX_BIN_DIR/powerview" /usr/local/bin/powerview
         # Export the /usr/local/bin symlink (not the PIPX_BIN_DIR target
         # directly) to the host, same rootful distrobox-export path as
@@ -710,8 +776,8 @@ setup-kerbrute:
     # `kerbrute` reachable everywhere INSIDE the container regardless of shell
     # invocation style. The container's /usr/local/bin is part of its own
     # private root filesystem, so this is still container-only.
-    # Idempotent: `go install ...@latest`, `ln -sf`, and the export below all
-    # handle re-runs cleanly.
+    # Idempotent: `go install ...@<pinned-sha>`, `ln -sf`, and the export below
+    # all handle re-runs cleanly.
     # Ensure go is present before installing. Normally from spinofin-kali.ini;
     # installed on demand here (container-local apt -- does not touch the host
     # or the no-layering policy) so this recipe doesn't fail with "go: command
@@ -731,7 +797,13 @@ setup-kerbrute:
         export GOBIN="/opt/spinofin/go/bin"
         sudo mkdir -p "$GOPATH" "$GOBIN"
         sudo chown -R "$(id -u):$(id -g)" "$GOPATH"
-        go install github.com/ropnop/kerbrute@latest
+        # SUPPLY-CHAIN PIN: build a fixed commit, not @latest. Same rationale as
+        # setup-powerview -- the install is reproducible, and kerbrute is
+        # deliberately left OUT of `ujust upgrade-kali` (not an apt package; not
+        # re-pulled on upgrade), so it stays frozen at this commit until the SHA
+        # below is changed on purpose. To move it: update the SHA here and re-run
+        # `ujust setup-kerbrute` (or `ujust rebuild-kali`).
+        go install github.com/ropnop/kerbrute@9cfb81e4fab8037acb44c678773ca3f93bc2b39c
         sudo ln -sf "$GOBIN/kerbrute" /usr/local/bin/kerbrute
         # Export the /usr/local/bin symlink (not the GOBIN target directly)
         # to the host, same rootful distrobox-export path as export-impacket,
