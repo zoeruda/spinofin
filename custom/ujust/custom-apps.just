@@ -16,9 +16,9 @@ install-default-apps:
     # `brew bundle` only installs a Brewfile's own top-level formulas -- for one
     # already installed (e.g. rustscan), it does NOT re-verify that formula's
     # OWN dependencies are still present. So if a dependency was separately
-    # removed later (e.g. `ujust toggle-nmap` running `brew uninstall
-    # --ignore-dependencies nmap` while rustscan stays installed), a plain
-    # re-run of this recipe silently does nothing about it. `brew missing` is
+    # removed later (e.g. a manual `brew uninstall --ignore-dependencies nmap`
+    # while rustscan stays installed), a plain re-run of this recipe silently
+    # does nothing about it. `brew missing` is
     # the purpose-built check for exactly this: it lists every installed
     # formula that's missing one of its own dependencies. Reinstall those
     # formulas (not just the bare missing package) so Homebrew's normal

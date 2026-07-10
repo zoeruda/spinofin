@@ -91,9 +91,9 @@ update-and-reboot:
         echo "Reboot later to apply updates."
     fi
 
-# Set the shell new terminals launch on the host (bash, zsh, or fish)
+# Set the shell new terminals launch on the host (bash/zsh/fish; scriptable: `ujust toggle-shell zsh`)
 [group('System')]
-toggle-shell:
+toggle-shell shell="":
     #!/usr/bin/env bash
     set -euo pipefail
     # bash, zsh, and fish all ship on the Bluefin base already, so "install" is
@@ -108,20 +108,36 @@ toggle-shell:
     # The supported switch on Bluefin is per-terminal: we set the default Ptyxis
     # profile's custom command. (The container recipe, toggle-kali-shell, DOES
     # change the real login shell -- that's correct there, wrong here.)
-    echo "Which shell should new terminals launch?"
-    echo "  1. bash (default)"
-    echo "  2. zsh"
-    echo "  3. fish"
-    read -rp "Enter a number [1-3]: " choice
-    case "${choice}" in
-        1) shell_name="bash" ;;
-        2) shell_name="zsh" ;;
-        3) shell_name="fish" ;;
-        *)
-            echo "ERROR: invalid choice '${choice}' -- expected 1, 2, or 3." >&2
-            exit 1
-            ;;
-    esac
+    #
+    # INPUT: an optional argument (`ujust toggle-shell zsh`) makes this
+    # non-interactive for scripted provisioning; validated against the same
+    # bash/zsh/fish allowlist as the menu. With no argument we fall back to the
+    # interactive prompt, so the bare `ujust toggle-shell` UX is unchanged.
+    requested="{{ shell }}"
+    if [ -n "${requested}" ]; then
+        case "${requested}" in
+            bash | zsh | fish) shell_name="${requested}" ;;
+            *)
+                echo "ERROR: invalid shell '${requested}' -- expected bash, zsh, or fish." >&2
+                exit 1
+                ;;
+        esac
+    else
+        echo "Which shell should new terminals launch?"
+        echo "  1. bash (default)"
+        echo "  2. zsh"
+        echo "  3. fish"
+        read -rp "Enter a number [1-3]: " choice
+        case "${choice}" in
+            1) shell_name="bash" ;;
+            2) shell_name="zsh" ;;
+            3) shell_name="fish" ;;
+            *)
+                echo "ERROR: invalid choice '${choice}' -- expected 1, 2, or 3." >&2
+                exit 1
+                ;;
+        esac
+    fi
 
     # --- Resolve (or, only if missing, brew-install) the shell binary ---
     shell_path="$(command -v "${shell_name}" 2>/dev/null || true)"

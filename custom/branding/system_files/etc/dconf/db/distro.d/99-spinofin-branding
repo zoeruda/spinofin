@@ -2,10 +2,18 @@
 #   - custom-command-list (icon NAME -> themed symbolic lookup, recolored)
 #   - Logo-menu (custom icon FILE PATH; St still recolors *-symbolic.svg, which
 #     is how Bluefin's own ublue-logo-symbolic.svg renders through this path)
-# We set both so whichever is active shows the spinofin mark. The companion
-# locks/ file forces these over any per-user dconf value left on an existing
-# Bluefin install (a plain system default can't win against the user db, which
-# bootc switch never touches).
+# We set both so whichever is active shows the spinofin mark as a fallback
+# default. Deliberately UNLOCKED: a locked key can't be changed by the user at
+# all -- not just here, but also from inside the extensions' own preference
+# UIs, which write via plain gsettings.set_*() with no lock-awareness (neither
+# extension checks Gio.Settings.is_writable() before writing), so a locked key
+# makes their icon picker silently fail to persist a user's selection with no
+# error shown. This system default is only a fallback for accounts with no
+# explicit per-user value; see the autostart entry
+# (etc/xdg/autostart/spinofin-branding-migrate-user-logo.desktop) for how
+# spinofin still applies its own mark on fresh installs and on rebase from an
+# existing Bluefin install without permanently overriding user choice. See
+# custom/branding/README.md ("User-Customizable Panel Logo").
 [org/gnome/shell/extensions/custom-command-list]
 menuicon-setting='spinofin-logo-symbolic'
 
