@@ -1,0 +1,37 @@
+#!/usr/bin/bash
+
+set -euo pipefail
+
+###############################################################################
+# spinofin: one-shot per-user panel logo migration
+###############################################################################
+# Seeds the spinofin panel logo into THIS user's own dconf database, once,
+# then never touches it again. Run by
+# etc/xdg/autostart/spinofin-branding-migrate-user-logo.desktop -- a plain
+# XDG autostart entry.
+###############################################################################
+
+STAMP_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/spinofin"
+STAMP_FILE="$STAMP_DIR/branding-migrated"
+
+if [ -e "$STAMP_FILE" ]; then
+    exit 0
+fi
+
+mkdir -p "$STAMP_DIR"
+
+# Custom Command List (custom-command-list@storageb.github.com)
+gsettings set org.gnome.shell.extensions.custom-command-list \
+    menuicon-setting 'spinofin-logo-symbolic' || \
+    echo "WARN: could not set custom-command-list menuicon-setting (schema missing?)" >&2
+
+# Logo Menu (logomenu@aryan_k) -- the extension Bluefin enables by default.
+gsettings set org.gnome.shell.extensions.Logo-menu use-custom-icon true || \
+    echo "WARN: could not set Logo-menu use-custom-icon (schema missing?)" >&2
+gsettings set org.gnome.shell.extensions.Logo-menu custom-icon-path \
+    '/usr/share/icons/hicolor/scalable/actions/spinofin-logo-symbolic.svg' || \
+    echo "WARN: could not set Logo-menu custom-icon-path (schema missing?)" >&2
+gsettings set org.gnome.shell.extensions.Logo-menu symbolic-icon true || \
+    echo "WARN: could not set Logo-menu symbolic-icon (schema missing?)" >&2
+
+touch "$STAMP_FILE"

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=spinofin panel logo migration
+Comment=One-time seed of spinofin's default panel logo into this user's dconf database
+Exec=/usr/libexec/spinofin/branding-migrate-user-logo
+Terminal=false
+NoDisplay=true
+OnlyShowIn=GNOME;
+X-GNOME-Autostart-enabled=true

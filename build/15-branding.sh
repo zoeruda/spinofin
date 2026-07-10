@@ -6,7 +6,16 @@ set -euo pipefail
 # Branding
 ###############################################################################
 # Applies spinofin's OS-identity branding: boot splash (Plymouth watermark),
-# GDM login logo, the panel logo icon, and the fastfetch terminal logo.
+# GDM login logo, the panel logo icon, and the fastfetch terminal logo. Also
+# ships an XDG autostart entry (etc/xdg/autostart/) that seeds the panel logo
+# into each account's own dconf db on first graphical login, so spinofin's
+# mark applies out of the box while still leaving the icon changeable (and
+# the change persistent) by the user afterward -- see
+# custom/branding/README.md, "User-Customizable Panel Logo". No new systemd
+# unit is authored for this -- the autostart entry is just another file in
+# system_files/, picked up by the merge-copy in step 2 below like everything
+# else in this script; GNOME session startup (not anything spinofin wires up
+# itself) is what runs it.
 #
 # NO-LAYERING POLICY -- see README.md
 # Everything here is either a FILE OVERWRITE of artwork the base image already
