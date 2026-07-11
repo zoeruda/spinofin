@@ -16,6 +16,60 @@
 kali_ini := "/usr/share/spinofin/distrobox/spinofin-kali.ini"
 kali_box := "spinofin-kali"
 
+# Set up EVERYTHING: container, Metasploit, BloodHound, powerview, kerbrute, impacket, wordlists (one-shot; re-runnable)
+[group('Kali')]
+super-kali:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # One-shot orchestrator over the individual setup-* recipes below, run in
+    # the same order as setup-kali's own "Suggested next steps" footer. Every
+    # step is independently idempotent/re-runnable (see each recipe's own doc
+    # comment), so re-running super-kali itself is always safe -- it just
+    # re-verifies/re-applies whatever already ran (e.g. setup-kali is a no-op
+    # once the container exists).
+    #
+    # Calls `ujust <recipe>` (same pattern custom-apps.just already uses for
+    # `ujust install-flatpak ...`) rather than just's native dependency-chain
+    # syntax (like kali-toolsets.just's `install-kali-web: (install-kali-toolset
+    # "web")`), so this stays simple to read top-to-bottom with a numbered
+    # progress banner and keeps working unchanged if any of these recipes ever
+    # move to a different .just file.
+    #
+    # DELIBERATELY NOT INCLUDED:
+    #   - bloodhound-start: starts a live service, not a one-time setup step --
+    #     it needs the neo4j password set by hand first (see setup-bloodhound's
+    #     own "next steps" below)
+    #   - toggle-kali-shell: a preference, not a setup step
+    #   - upgrade-kali / rebuild-kali / remove-kali: maintenance actions, not
+    #     part of a first-time install
+    echo "Setting up the full spinofin Kali stack. This is HEAVY: it pulls"
+    echo "kali-rolling, Metasploit, BloodHound + neo4j, and 1GB+ of wordlists."
+    echo "Expect this to take a while on first run."
+    steps=(
+        setup-kali
+        setup-metasploit
+        setup-bloodhound
+        setup-powerview
+        setup-kerbrute
+        export-impacket
+        link-wordlists
+    )
+    total="${#steps[@]}"
+    n=0
+    for step in "${steps[@]}"; do
+        n=$((n + 1))
+        echo ""
+        echo "=== [${n}/${total}] ujust ${step} ==="
+        ujust "${step}"
+    done
+    echo ""
+    echo "=========================================="
+    echo "super-kali complete. Everything above ran (or was already in place)."
+    echo "  ujust kali-status       # see a summary of what's installed"
+    echo "  ujust bloodhound-start  # once you've set the neo4j password (see"
+    echo "                          # the setup-bloodhound output above)"
+    echo "  ujust enter-kali        # drop into the container directly"
+
 # Provision the rootful Kali toolbox container from its manifest (HEAVY first run)
 [group('Kali')]
 setup-kali:
@@ -254,6 +308,131 @@ upgrade-kali:
     echo "NOTE: powerview and kerbrute are intentionally NOT upgraded here -- they"
     echo "are pinned to a fixed commit (see setup-powerview / setup-kerbrute)."
     echo "Bump the SHA in those recipes and re-run them to move either one."
+
+# Show a summary of what's set up in the Kali container, at a glance
+[group('Kali')]
+kali-status:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "spinofin Kali status"
+    echo "===================="
+    if ! command -v distrobox >/dev/null 2>&1; then
+        echo "distrobox:  NOT FOUND on host -- install it first (see README)."
+        exit 0
+    fi
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "Container ({{ kali_box }}):  NOT SET UP"
+        echo ""
+        echo "Run 'ujust setup-kali' to provision it, or 'ujust super-kali' to"
+        echo "set up the whole stack (Metasploit, BloodHound, powerview,"
+        echo "kerbrute, impacket, wordlists) in one pass."
+        exit 0
+    fi
+    echo "Container ({{ kali_box }}):  present"
+    echo ""
+    # One container round-trip, batching every dpkg/systemctl/file check into a
+    # single KEY=VALUE report (parsed by the `while read` loop below) so this
+    # stays fast -- distrobox enter has real per-call overhead, and this is the
+    # only place that overhead is paid, no matter how many things we check.
+    # Mirrors the exact state markers each setup-* recipe itself relies on
+    # (dpkg -s for apt packages, the $HOME/.local/share/spinofin/wordlists
+    # staging path from link-wordlists, the /usr/local/bin symlinks from
+    # setup-powerview/setup-kerbrute) so this never drifts from what "already
+    # set up" actually means to those recipes.
+    report="$(distrobox enter --root {{ kali_box }} -- bash -lc '
+        set -euo pipefail
+        pkg() { dpkg -s "$1" >/dev/null 2>&1 && echo yes || echo no; }
+        echo "MSF_PKG=$(pkg metasploit-framework)"
+        echo "MSF_PG=$(systemctl is-enabled postgresql 2>/dev/null || echo disabled)"
+        echo "BH_PKG=$(pkg bloodhound)"
+        echo "IMPACKET_PKG=$(pkg impacket-scripts)"
+        echo "SECLISTS_STAGED=$([ -e "$HOME/.local/share/spinofin/wordlists/seclists" ] && echo yes || echo no)"
+        echo "ROCKYOU_STAGED=$([ -f "$HOME/.local/share/spinofin/wordlists/rockyou.txt" ] && echo yes || echo no)"
+        echo "POWERVIEW_BIN=$([ -x /usr/local/bin/powerview ] && echo yes || echo no)"
+        echo "KERBRUTE_BIN=$([ -x /usr/local/bin/kerbrute ] && echo yes || echo no)"
+        login_path="$(getent passwd "$(id -un)" | cut -d: -f7)"
+        echo "LOGIN_SHELL=$(basename "${login_path:-unknown}")"
+    ')"
+    msf_pkg="no"
+    msf_pg="disabled"
+    bh_pkg="no"
+    impacket_pkg="no"
+    seclists_staged="no"
+    rockyou_staged="no"
+    powerview_bin="no"
+    kerbrute_bin="no"
+    login_shell="unknown"
+    while IFS='=' read -r key val; do
+        case "${key}" in
+            MSF_PKG) msf_pkg="${val}" ;;
+            MSF_PG) msf_pg="${val}" ;;
+            BH_PKG) bh_pkg="${val}" ;;
+            IMPACKET_PKG) impacket_pkg="${val}" ;;
+            SECLISTS_STAGED) seclists_staged="${val}" ;;
+            ROCKYOU_STAGED) rockyou_staged="${val}" ;;
+            POWERVIEW_BIN) powerview_bin="${val}" ;;
+            KERBRUTE_BIN) kerbrute_bin="${val}" ;;
+            LOGIN_SHELL) login_shell="${val}" ;;
+        esac
+    done <<<"${report}"
+
+    echo "Login shell:  ${login_shell}   (change with: ujust toggle-kali-shell)"
+    echo ""
+
+    if [ "${msf_pkg}" = "yes" ] && [ "${msf_pg}" = "enabled" ]; then
+        echo "[✓] Metasploit  -- msfdb initialized, postgresql enabled"
+    else
+        echo "[ ] Metasploit  -- not set up (ujust setup-metasploit)"
+    fi
+    if command -v msfconsole >/dev/null 2>&1; then
+        echo "      msfconsole exported to host"
+    fi
+
+    if [ "${bh_pkg}" = "yes" ]; then
+        echo "[✓] BloodHound  -- installed"
+        echo "      bring the stack up (safe to re-run): ujust bloodhound-start"
+    else
+        echo "[ ] BloodHound  -- not set up (ujust setup-bloodhound)"
+    fi
+
+    if [ "${impacket_pkg}" = "yes" ]; then
+        echo "[✓] Impacket    -- container package present"
+    else
+        echo "[ ] Impacket    -- not set up (ujust export-impacket)"
+    fi
+    if command -v impacket-secretsdump >/dev/null 2>&1; then
+        echo "      exported to host (e.g. impacket-secretsdump)"
+    fi
+
+    if [ "${seclists_staged}" = "yes" ] && [ "${rockyou_staged}" = "yes" ]; then
+        echo "[✓] Wordlists   -- staged"
+    else
+        echo "[ ] Wordlists   -- not staged (ujust link-wordlists)"
+    fi
+    if [ -e "${HOME}/wordlists" ]; then
+        echo "      linked at ~/wordlists"
+    fi
+
+    if [ "${powerview_bin}" = "yes" ]; then
+        echo "[✓] powerview   -- installed in container"
+    else
+        echo "[ ] powerview   -- not set up (ujust setup-powerview)"
+    fi
+    if command -v powerview >/dev/null 2>&1; then
+        echo "      exported to host"
+    fi
+
+    if [ "${kerbrute_bin}" = "yes" ]; then
+        echo "[✓] kerbrute    -- installed in container"
+    else
+        echo "[ ] kerbrute    -- not set up (ujust setup-kerbrute)"
+    fi
+    if command -v kerbrute >/dev/null 2>&1; then
+        echo "      exported to host"
+    fi
+
+    echo ""
+    echo "Run 'ujust super-kali' to set up everything not yet [✓] above in one pass."
 
 # Initialize the Metasploit PostgreSQL database inside the container (run ONCE)
 [group('Kali')]
