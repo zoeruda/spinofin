@@ -314,8 +314,6 @@ upgrade-kali:
 kali-status:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "spinofin Kali status"
-    echo "===================="
     if ! command -v distrobox >/dev/null 2>&1; then
         echo "distrobox:  NOT FOUND on host -- install it first (see README)."
         exit 0
@@ -376,63 +374,69 @@ kali-status:
         esac
     done <<<"${report}"
 
-    echo "Login shell:  ${login_shell}   (change with: ujust toggle-kali-shell)"
+    echo "spinofin Kali status"
+    echo "===================="
+    echo "Login shell: ${login_shell} (change with: ujust toggle-kali-shell)"
     echo ""
 
     if [ "${msf_pkg}" = "yes" ] && [ "${msf_pg}" = "enabled" ]; then
-        echo "[✓] Metasploit  -- msfdb initialized, postgresql enabled"
+        if command -v msfconsole >/dev/null 2>&1; then
+            echo "[✓] Metasploit  -- msfdb initialized, msfconsole exported to host"
+        else
+            echo "[~] Metasploit  -- msfdb initialized (not exported to host)"
+        fi
     else
         echo "[ ] Metasploit  -- not set up (ujust setup-metasploit)"
     fi
-    if command -v msfconsole >/dev/null 2>&1; then
-        echo "      msfconsole exported to host"
-    fi
 
     if [ "${bh_pkg}" = "yes" ]; then
-        echo "[✓] BloodHound  -- installed"
-        echo "      bring the stack up (safe to re-run): ujust bloodhound-start"
+        echo "[✓] BloodHound  -- installed (start with: ujust bloodhound-start)"
     else
         echo "[ ] BloodHound  -- not set up (ujust setup-bloodhound)"
     fi
 
     if [ "${impacket_pkg}" = "yes" ]; then
-        echo "[✓] Impacket    -- container package present"
+        if command -v impacket-secretsdump >/dev/null 2>&1; then
+            echo "[✓] Impacket    -- exported to host (e.g. impacket-secretsdump)"
+        else
+            echo "[~] Impacket    -- installed in container (not exported to host)"
+        fi
     else
         echo "[ ] Impacket    -- not set up (ujust export-impacket)"
     fi
-    if command -v impacket-secretsdump >/dev/null 2>&1; then
-        echo "      exported to host (e.g. impacket-secretsdump)"
-    fi
 
     if [ "${seclists_staged}" = "yes" ] && [ "${rockyou_staged}" = "yes" ]; then
-        echo "[✓] Wordlists   -- staged"
+        if [ -e "${HOME}/wordlists" ]; then
+            echo "[✓] Wordlists   -- staged, linked at ~/wordlists"
+        else
+            echo "[~] Wordlists   -- staged (not linked at ~/wordlists)"
+        fi
     else
         echo "[ ] Wordlists   -- not staged (ujust link-wordlists)"
     fi
-    if [ -e "${HOME}/wordlists" ]; then
-        echo "      linked at ~/wordlists"
-    fi
 
     if [ "${powerview_bin}" = "yes" ]; then
-        echo "[✓] powerview   -- installed in container"
+        if command -v powerview >/dev/null 2>&1; then
+            echo "[✓] powerview   -- installed, exported to host"
+        else
+            echo "[~] powerview   -- installed in container (not exported to host)"
+        fi
     else
         echo "[ ] powerview   -- not set up (ujust setup-powerview)"
     fi
-    if command -v powerview >/dev/null 2>&1; then
-        echo "      exported to host"
-    fi
 
     if [ "${kerbrute_bin}" = "yes" ]; then
-        echo "[✓] kerbrute    -- installed in container"
+        if command -v kerbrute >/dev/null 2>&1; then
+            echo "[✓] kerbrute    -- installed, exported to host"
+        else
+            echo "[~] kerbrute    -- installed in container (not exported to host)"
+        fi
     else
         echo "[ ] kerbrute    -- not set up (ujust setup-kerbrute)"
     fi
-    if command -v kerbrute >/dev/null 2>&1; then
-        echo "      exported to host"
-    fi
 
     echo ""
-    echo "Run 'ujust super-kali' to set up everything not yet [✓] above in one pass."
+    echo "Run 'ujust super-kali' to set up or fix anything above not marked [✓]."
 
 # Initialize the Metasploit PostgreSQL database inside the container (run ONCE)
 [group('Kali')]
