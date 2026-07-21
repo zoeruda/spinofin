@@ -62,7 +62,7 @@ COPY --from=brew /system_files /oci/brew
 #
 # Pinned to :stable for now; Renovate will replace this with a
 # :stable@sha256:... digest pin on its first run after push.
-FROM ghcr.io/ublue-os/bluefin:stable@sha256:7dad244ef875a869115ea2760b0bc7fd3c6ffcc268d3d9b99d655171cae167b8
+FROM ghcr.io/ublue-os/bluefin:stable@sha256:647bb3602a6b250d10d0142a5d5ff8937557ba1d5dfbcdcc478db68f4388b4e7
 
 # Image identity - these define how bootc, fastfetch, and the ublue ecosystem
 # recognize your image. Change these to match your project name.
