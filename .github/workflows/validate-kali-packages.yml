@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       # renovate: datasource=docker depName=kalilinux/kali-rolling
-      image: "kalilinux/kali-rolling:latest@sha256:776d57c9d607faafef9957073b0b5a05b0d1115e5728777a8fc5588827cfd249"
+      image: "kalilinux/kali-rolling:latest@sha256:3093a0bd1f1196f4b10ab8e4a671929a6cd0153768642e6aa20dfced5e4132c5"
     timeout-minutes: 10
     steps:
       # The checkout action needs git; the base kali-rolling image doesn't
@@ -30,7 +30,7 @@ jobs:
           apt-get install -y --no-install-recommends git ca-certificates
 
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Validate additional_packages against Kali apt repositories
         shell: bash
