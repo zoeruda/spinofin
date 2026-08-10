@@ -29,7 +29,10 @@ jobs:
           just --unstable --fmt --check -f Justfile
           echo "::endgroup::"
 
-          # Validate custom ujust files
+          # Validate custom ujust files INDIVIDUALLY. This is a fragment-level
+          # check only: each file in custom/ujust/ is a standalone justfile on
+          # disk, but none of them is what actually ships or runs. Passing
+          # here says nothing about the merged result below -- keep both.
           find "custom/ujust" -iname '*.just' -print0 | \
             while IFS= read -r -d '' justfile ; do \
               echo "::group:: ===$(basename "$justfile")==="
@@ -37,4 +40,46 @@ jobs:
               echo "::endgroup::"
             done
 
-          echo "All justfiles are valid"
+          echo "All individual justfiles are valid"
+
+      - name: Validate merged justfile (the actual shipped artifact)
+        shell: bash
+        run: |
+          set -xeuo pipefail
+
+          # build/10-build.sh concatenates every custom/ujust/*.just fragment
+          # into a single 60-custom.just, which is the justfile `ujust`
+          # actually parses at runtime -- no fragment above is ever run on
+          # its own. Per-file validation, alone, cannot catch problems that
+          # only exist once files are combined:
+          #   - a variable or recipe name defined in two fragments (`just`
+          #     hard-fails the WHOLE merged file with "has multiple
+          #     definitions" -- see the warning comment at the top of
+          #     custom/ujust/kali-toolsets.just about kali_box for exactly
+          #     this risk) -- breaks every ujust command, not just the
+          #     colliding recipe, since the file fails to parse at all;
+          #   - formatting drift introduced by the concatenation itself
+          #     (e.g. a separator producing a double blank line at a file
+          #     boundary, which `just --fmt --check` flags even though
+          #     every individual fragment is independently well-formatted).
+          # So: reproduce the exact merge build/10-build.sh performs, then
+          # validate the RESULT the same two ways -- format AND parse/list.
+          # KEEP THIS FIND COMMAND BYTE-FOR-BYTE IDENTICAL to the one in
+          # build/10-build.sh (same idiom the repo already uses for
+          # setup-kali/rebuild-kali's sudoers command): if that command
+          # changes, this must change with it, or this step stops testing
+          # what actually ships.
+          echo "::group:: Building merged justfile (mirrors build/10-build.sh)"
+          merged="$(mktemp -d)/60-custom.just"
+          find "custom/ujust" -iname '*.just' -exec printf "\n" \; -exec cat {} \; >>"${merged}"
+          echo "::endgroup::"
+
+          echo "::group:: Format-check the merged justfile"
+          just --unstable --fmt --check -f "${merged}"
+          echo "::endgroup::"
+
+          echo "::group:: Parse the merged justfile (catches cross-file duplicate defs)"
+          just -f "${merged}" --list >/dev/null
+          echo "::endgroup::"
+
+          echo "Merged justfile is valid"

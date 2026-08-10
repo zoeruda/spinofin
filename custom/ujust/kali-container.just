@@ -515,7 +515,7 @@ setup-metasploit:
     echo "'ujust setup-metasploit' (which is the only path here that touches"
     echo "the database)."
 
-# Install BloodHound CE in the container and provision its databases (re-runnable)
+# Install BloodHound CE in the container and provision its databases (run ONCE)
 [group('Kali')]
 setup-bloodhound:
     #!/usr/bin/env bash
@@ -525,13 +525,47 @@ setup-bloodhound:
         echo "Run 'ujust setup-kali' first to provision it." >&2
         exit 1
     fi
+    # IDEMPOTENCY GUARD: this recipe used to run its full body -- apt-get
+    # update, apt-get install, and the whole bloodhound-setup bring-up --
+    # unconditionally on every call, identically whether this was the first
+    # run ever or the tenth (e.g. via a repeated `ujust super-kali`). Two
+    # real problems with that, mirroring the "SKIP THE REINSTALL/REBUILD ONCE
+    # ALREADY CURRENT" fix already applied to setup-powerview/setup-kerbrute:
+    #   1. Wasted work: a needless apt-get update + the full postgres/neo4j
+    #      bring-up dance every single re-run, when `ujust bloodhound-start`
+    #      already exists (and is cheap/offline) for "just bring it back up".
+    #   2. Actively WRONG output: the footer below always told you to log in
+    #      to neo4j with the DEFAULT neo4j/neo4j credentials and set a new
+    #      password -- correct on a first run, but repeated on every re-run
+    #      even after you'd already changed that password, which is
+    #      misleading rather than merely redundant.
+    # Tracked via a stamp file INSIDE the container's own root filesystem
+    # (mirrors setup-powerview's $PIPX_HOME/.powerview-installed-sha and
+    # setup-kerbrute's $GOPATH/.kerbrute-installed-sha) -- deliberately NOT
+    # under $HOME, so `ujust rebuild-kali` (which wipes the container's
+    # rootfs, including neo4j's data and /etc/bhapi/bhapi.json, but keeps
+    # $HOME) correctly forces a fresh first-run next time, matching what a
+    # rebuild actually did to BloodHound's state.
+    stamp="/etc/bhapi/.spinofin-provisioned"
+    if distrobox enter --root {{ kali_box }} -- bash -lc "[ -f '${stamp}' ]" >/dev/null 2>&1; then
+        echo "BloodHound is already installed and provisioned (this ran before)."
+        echo "Nothing to do here -- this step only needs to run ONCE."
+        echo "  ujust bloodhound-start  # bring it up (after a reboot, etc.)"
+        echo "If you need to reset it entirely (e.g. lost the neo4j password),"
+        echo "there is no in-place reset -- rebuild the container and re-provision:"
+        echo "  ujust rebuild-kali && ujust setup-bloodhound"
+        exit 0
+    fi
     echo "Installing BloodHound CE and provisioning its databases..."
     # Mirrors `setup-metasploit`. Kali's `bloodhound` package ships the
     # bloodhound-setup helper, which starts PostgreSQL + neo4j and creates the
     # BloodHound databases. The box is an init container (init=true in the .ini),
     # so systemd-managed services work. bloodhound is installed on demand here
     # rather than baked into the .ini because it pulls neo4j + a JVM and not
-    # every user wants that weight. Idempotent: safe to re-run.
+    # every user wants that weight. dpkg -s (not command -v) so it's detected
+    # by package name, same guard style as setup-metasploit/export-impacket/
+    # link-wordlists -- skips apt-get entirely if the package is already
+    # present (e.g. installed outside this recipe, or the .ini gains it later).
     #
     # HEADLESS FIX: bloodhound-setup ends by trying to xdg-open the neo4j page in
     # a browser, which has no display/browser in this container and makes the
@@ -539,13 +573,22 @@ setup-bloodhound:
     # setup completes cleanly; you open the neo4j page in your HOST browser
     # instead (instructions printed below). Real (non-browser) failures still
     # surface, since we only neutralize the browser step.
-    distrobox enter --root {{ kali_box }} -- sudo bash -lc 'set -e; apt-get update; DEBIAN_FRONTEND=noninteractive apt-get install -y bloodhound; shim=/tmp/spinofin-nobrowser; mkdir -p "$shim"; for b in xdg-open sensible-browser x-www-browser www-browser gnome-www-browser firefox; do printf "#!/bin/sh\nexit 0\n" > "$shim/$b"; chmod +x "$shim/$b"; done; PATH="$shim:$PATH" BROWSER=true bloodhound-setup'
+    distrobox enter --root {{ kali_box }} -- sudo bash -lc 'set -e; dpkg -s bloodhound >/dev/null 2>&1 || { apt-get update; DEBIAN_FRONTEND=noninteractive apt-get install -y bloodhound; }; shim=/tmp/spinofin-nobrowser; mkdir -p "$shim"; for b in xdg-open sensible-browser x-www-browser www-browser gnome-www-browser firefox; do printf "#!/bin/sh\nexit 0\n" > "$shim/$b"; chmod +x "$shim/$b"; done; PATH="$shim:$PATH" BROWSER=true bloodhound-setup'
+    # Stamp only on success (the `set -e` block above already aborted the
+    # recipe on any real failure, so reaching this line means bloodhound-setup
+    # actually completed) -- an interrupted/failed run leaves no stamp, so the
+    # next `ujust setup-bloodhound` correctly retries the full sequence rather
+    # than reporting "already provisioned" for a half-done state.
+    distrobox enter --root {{ kali_box }} -- sudo bash -lc "mkdir -p /etc/bhapi && touch '${stamp}'"
     echo ""
     echo "Done -- BloodHound databases are provisioned. Now, from your HOST browser:"
     echo "  1. Open http://localhost:7474 (neo4j), log in neo4j / neo4j, set a new password."
     echo "  2. Put that password into the container config:"
     echo "       distrobox enter --root {{ kali_box }} -- sudo nano /etc/bhapi/bhapi.json"
     echo "  3. Start BloodHound:  ujust bloodhound-start   (UI at http://localhost:8080)"
+    echo ""
+    echo "You only need this ONCE. Re-running 'ujust setup-bloodhound' after this"
+    echo "point is a no-op (see above) -- use 'ujust bloodhound-start' instead."
 
 # Start BloodHound CE -- the single 'get going' command, like Kali's bloodhound-start
 [group('Kali')]
