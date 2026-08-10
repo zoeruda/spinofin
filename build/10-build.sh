@@ -33,7 +33,18 @@ mkdir -p /usr/share/ublue-os/homebrew/
 cp /ctx/custom/brew/*.Brewfile /usr/share/ublue-os/homebrew/
 
 # Consolidate Just Files
-find /ctx/custom/ujust -iname '*.just' -exec printf "\n\n" \; -exec cat {} \; >>/usr/share/ublue-os/just/60-custom.just
+# Single blank-line separator (one `\n`, on top of each fragment's own
+# trailing newline) -- matches `just --fmt`'s canonical style of exactly one
+# blank line between top-level items. Two `\n`s here previously produced a
+# double blank line at every file boundary, which `just --fmt --check`
+# reports as a diff against the file `just` itself would produce -- i.e. the
+# merged file this line builds (the actual justfile shipped in the image and
+# parsed by `ujust` at runtime) failed formatting validation, even though
+# every individual fragment under custom/ujust/ passed it. See
+# .github/workflows/validate-justfiles.yml, which now builds and validates
+# this exact concatenation (not just the fragments) so a mismatch here is
+# caught in CI instead of only being visible after a real build.
+find /ctx/custom/ujust -iname '*.just' -exec printf "\n" \; -exec cat {} \; >>/usr/share/ublue-os/just/60-custom.just
 
 # Copy Flatpak preinstall files
 mkdir -p /usr/share/flatpak/preinstall.d/
