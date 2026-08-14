@@ -94,12 +94,23 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/tmp \
     /ctx/build/00-image-info.sh
 
-# Set dnf options before build scripts (persists across subsequent RUN layers)
-# NOTE: no-layering policy in effect -- this repo does not call `dnf5 install`
-# in build/*.sh. This line only sets cache options and is otherwise inert.
-# See README.md for the full rationale and the Track A -> Track B
-# (GNOME OS bootc, no package manager) migration plan this enables.
-RUN dnf5 config-manager setopt keepcache=1 install_weak_deps=0
+# NOTE: there is deliberately NO dnf configuration step here.
+#
+# The finpilot template sets `dnf5 config-manager setopt keepcache=1
+# install_weak_deps=0` at this point to warm the package cache for its
+# `dnf5 install` calls. spinofin has no such calls -- the no-layering policy
+# means nothing is ever installed at build time -- so both options were inert,
+# and the step was pure template inheritance.
+#
+# It was also actively harmful: `config-manager setopt` rewrites
+# /etc/dnf/dnf.conf in place, and on the CI runner it left the file
+# unparseable, surfacing several steps later as
+#   Error in configuration file "/etc/dnf/dnf.conf" / Missing '=' on line 5
+# at the *next* dnf5 invocation (clean-stage.sh), pointing nowhere near its
+# own cause. Not writing the file at all is both the fix and the correct
+# end state: the Track A -> Track B target (GNOME OS bootc) ships no package
+# manager, so build-time dnf usage is something we want to be rid of anyway.
+# See README.md, "No Build-Time Layering".
 
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/cache/libdnf5 \
