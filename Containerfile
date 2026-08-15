@@ -36,7 +36,7 @@
 
 # OCI context images - imported below and pinned directly in their FROM lines.
 # The base image is pinned in the FROM line below and updated by Renovate.
-FROM ghcr.io/projectbluefin/common:latest@sha256:6c6e3fbe81c8b04d12db7a231c312dff328706f059919fd909885ed222a88d86 AS common
+FROM ghcr.io/projectbluefin/common:latest@sha256:a5467016ef8921b38e1bba7e9f612a80781927359b9d450195fa6e883ca43d81 AS common
 FROM ghcr.io/ublue-os/brew:latest@sha256:de0391c67209703bdf1249079c8d478d44eff864d62e7ec6f12aaa382bdf21df AS brew
 
 # Context stage - combine local and imported OCI container resources
@@ -62,7 +62,7 @@ COPY --from=brew /system_files /oci/brew
 #
 # Pinned to :stable for now; Renovate will replace this with a
 # :stable@sha256:... digest pin on its first run after push.
-FROM ghcr.io/ublue-os/bluefin:stable@sha256:9bd683c6e789c922a2ea72b303813e43a1a95c2e0e812f38b8979144dd50e288
+FROM ghcr.io/ublue-os/bluefin:stable@sha256:856082ff05edf994977d2adf040a159b5490218deb8e124cc6bd6df2a0aae530
 
 # Image identity - these define how bootc, fastfetch, and the ublue ecosystem
 # recognize your image. Change these to match your project name.
@@ -94,12 +94,23 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/tmp \
     /ctx/build/00-image-info.sh
 
-# Set dnf options before build scripts (persists across subsequent RUN layers)
-# NOTE: no-layering policy in effect -- this repo does not call `dnf5 install`
-# in build/*.sh. This line only sets cache options and is otherwise inert.
-# See README.md for the full rationale and the Track A -> Track B
-# (GNOME OS bootc, no package manager) migration plan this enables.
-RUN dnf5 config-manager setopt keepcache=1 install_weak_deps=0
+# NOTE: there is deliberately NO dnf configuration step here.
+#
+# The finpilot template sets `dnf5 config-manager setopt keepcache=1
+# install_weak_deps=0` at this point to warm the package cache for its
+# `dnf5 install` calls. spinofin has no such calls -- the no-layering policy
+# means nothing is ever installed at build time -- so both options were inert,
+# and the step was pure template inheritance.
+#
+# It was also actively harmful: `config-manager setopt` rewrites
+# /etc/dnf/dnf.conf in place, and on the CI runner it left the file
+# unparseable, surfacing several steps later as
+#   Error in configuration file "/etc/dnf/dnf.conf" / Missing '=' on line 5
+# at the *next* dnf5 invocation (clean-stage.sh), pointing nowhere near its
+# own cause. Not writing the file at all is both the fix and the correct
+# end state: the Track A -> Track B target (GNOME OS bootc) ships no package
+# manager, so build-time dnf usage is something we want to be rid of anyway.
+# See README.md, "No Build-Time Layering".
 
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/cache/libdnf5 \

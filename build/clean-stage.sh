@@ -9,9 +9,21 @@ set -eoux pipefail
 # Set to a temp directory during unit tests.
 CLEAN_ROOT="${CLEAN_ROOT:-/}"
 
-# Revert back to upstream defaults
-dnf5 config-manager setopt keepcache=0
-dnf5 versionlock clear
+# NOTE: no dnf5 calls here, unlike the upstream template.
+#
+# The template reverts `keepcache` and clears versionlocks because its build
+# sets both. spinofin's no-layering policy means it sets neither: nothing is
+# installed at build time, so there is no cache to disable and no versionlock
+# to clear (the Bluefin base already runs its own `versionlock clear` at the
+# end of its build, so none are inherited either).
+#
+# Beyond being inert, `dnf5 config-manager setopt keepcache=0` was the step
+# that failed the build: it is the first thing to *read* /etc/dnf/dnf.conf
+# after the Containerfile's own `config-manager setopt` had rewritten it, and
+# it died on the malformed result ("Missing '=' on line 5"). That writer is
+# now gone; this reader goes with it. Keeping clean-stage.sh dnf-free also
+# makes it survive the Track A -> Track B move to a base with no package
+# manager, where any dnf5 call here would fail outright.
 
 # This comes last because we can't *ever* afford to ship fedora flatpaks on the image
 systemctl disable flatpak-add-fedora-repos.service
