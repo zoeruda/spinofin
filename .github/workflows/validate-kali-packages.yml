@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       # renovate: datasource=docker depName=kalilinux/kali-rolling
-      image: "kalilinux/kali-rolling:latest@sha256:f49124869e4eee549315879c3bd7ef92f23b8753fec7544537bcec1493277096"
+      image: "kalilinux/kali-rolling:latest@sha256:1a2eb0501a2dbe8aa8f513b0791699dbd9b539696768f40b2cbe1dead2fb0d67"
     timeout-minutes: 10
     steps:
       # The checkout action needs git; the base kali-rolling image doesn't
