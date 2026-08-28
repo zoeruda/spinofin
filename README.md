@@ -34,7 +34,13 @@ sudo bootc switch ghcr.io/zoeruda/spinofin:stable
 sudo systemctl reboot
 ```
 
-spinofin's `:stable` images (built from `main`) are signed with keyless cosign/OIDC via Fulcio; `:testing` images are intentionally left unsigned. If you're forking this repo, see [Optional: Enable Image Signing](#optional-enable-image-signing) to set it up for your own registry.
+spinofin's `:stable` images (built from `main`) are signed with keyless cosign/OIDC via Fulcio; `:testing` images are intentionally left unsigned. Verify the one you're **actually booted into** (by exact digest via `bootc status`, not just "whatever `:stable` currently points to in the registry") with:
+
+```bash
+ujust verify-image
+```
+
+If you're booted on `:testing`, this correctly reports "intentionally unsigned" instead of verifying `:stable` by mistake — it never defaults to checking a different tag than the one you're running. (It installs `cosign` via Homebrew first if it's missing. Pass an explicit `ujust verify-image stable` if you instead want to check what a fresh switch/upgrade would currently pull, independent of what's booted.) If you're forking this repo, see [Optional: Enable Image Signing](#optional-enable-image-signing) to set it up for your own registry.
 
 ### 3. Get set up (ujust recipes)
 
@@ -431,6 +437,8 @@ cosign verify \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   ghcr.io/zoeruda/spinofin:stable
 ```
+
+spinofin also ships this as `ujust verify-image` (see [`custom/ujust/image-verify.just`](custom/ujust/image-verify.just)) so users don't have to copy-paste it by hand. **If you fork this repo**, update the `spinofin_image` variable and the `--certificate-identity-regexp` in that file to match your own `IMAGE_VENDOR`/`IMAGE_NAME` — they're hardcoded to `zoeruda/spinofin`, same as the raw command above, and won't verify a fork's images until changed.
 
 ## Love Your Image? Let's Go to Production
 
