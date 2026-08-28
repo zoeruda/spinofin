@@ -18,11 +18,16 @@ shopt -s nullglob
 
 echo "::group:: Copy Bluefin Config from Common"
 
-# Copy just files from @projectbluefin/common (includes 00-entry.just which imports 60-custom.just)
+# DO NOT re-copy @projectbluefin/common's just files over the base image's.
+#
+# The base here is the *full* Bluefin image, which is itself built from
+# @projectbluefin/common and therefore already ships a complete, working
+# /usr/share/ublue-os/just/ (00-entry.just, changelog.just, system.just, ...).
+# Copying common's copies over them was pure redundancy -- the exact
+# redundancy the Containerfile's base-image note already flags as a cleanup
+# candidate -- because finpilot's template assembles from a *bare* base that
+# has no just files of its own. spinofin does not.
 mkdir -p /usr/share/ublue-os/just/
-shopt -s nullglob
-cp -r /ctx/oci/common/bluefin/usr/share/ublue-os/just/* /usr/share/ublue-os/just/
-shopt -u nullglob
 
 echo "::endgroup::"
 
@@ -45,6 +50,22 @@ cp /ctx/custom/brew/*.Brewfile /usr/share/ublue-os/homebrew/
 # this exact concatenation (not just the fragments) so a mismatch here is
 # caught in CI instead of only being visible after a real build.
 find /ctx/custom/ujust -iname '*.just' -exec printf "\n" \; -exec cat {} \; >>/usr/share/ublue-os/just/60-custom.just
+
+# Fail the build if any shipped justfile contains a NUL byte.
+#
+# `-a` is REQUIRED and not cosmetic: without it grep classifies a file as
+# binary *because* it contains a NUL and reports no match.
+nul_hits=""
+for justfile in /usr/share/ublue-os/just/*.just; do
+    if LC_ALL=C grep -qaP '\x00' "${justfile}"; then
+        nul_hits="${nul_hits} ${justfile}"
+    fi
+done
+if [ -n "${nul_hits}" ]; then
+    echo "ERROR: NUL byte(s) found in shipped justfile(s):${nul_hits}" >&2
+    echo "This would break ALL ujust recipes at runtime. Refusing to ship." >&2
+    exit 1
+fi
 
 # Copy Flatpak preinstall files
 mkdir -p /usr/share/flatpak/preinstall.d/
