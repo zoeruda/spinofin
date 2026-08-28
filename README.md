@@ -1,15 +1,15 @@
 # spinofin
 
 <p align="center">
-  <img src="docs/assets/spinofin-logo-full.svg" alt="spinofin — a declarable, image-based pentesting OS built on Bluefin" width="440">
+  <img src="docs/assets/spinofin-logo-full.svg" alt="spinofin — a declaratively-assembled, image-based pentesting OS built on Bluefin" width="440">
 </p>
 
-> A declarable, image-based pentesting OS — built on Bluefin. Kali-grade under the hood, GNOME-clean on the surface.
+> A declaratively-assembled, image-based pentesting OS — built on Bluefin. Kali-grade under the hood, GNOME-clean on the surface.
 
 **This README serves three audiences:**
 
 - **Using spinofin** — install it and run the tooling → [How to Get Started with spinofin](#how-to-get-started-with-spinofin)
-- **Forking spinofin** — build your own declarative OS from this repo → [Forking spinofin to build your own OS](#forking-spinofin-to-build-your-own-os)
+- **Forking spinofin** — build your own declaratively-assembled OS from this repo → [Forking spinofin to build your own OS](#forking-spinofin-to-build-your-own-os)
 - **Contributing to spinofin** — improve this project → [Contributing to spinofin](#contributing-to-spinofin)
 
 ## How to Get Started with spinofin
@@ -76,11 +76,34 @@ GUI apps (Flatseal, Wireshark, Burp Suite Community, KeePassXC, Remmina) install
 
 ## What Makes this Raptor Different?
 
-**What this fork is for:** a declarable, verifiable pentesting OS with Kali Linux-like tooling on a GNOME desktop, built using lessons from Bluefin and [Dakota](https://github.com/projectbluefin/dakota) (Bluefin's GNOME OS bootc prototype). It uses no build-time package layering — see "No Build-Time Layering" below — so the base image can move from Fedora Atomic to a true GNOME OS bootc image later without first unwinding a pile of system packages.
+**What this fork is for:** a declaratively-assembled, verifiable pentesting OS with Kali Linux-like tooling on a GNOME desktop, built using lessons from Bluefin and [Dakota](https://github.com/projectbluefin/dakota) (Bluefin's GNOME OS bootc prototype). It uses no build-time package layering — see "No Build-Time Layering" below — so the base image can move from Fedora Atomic to a true GNOME OS bootc image later without first unwinding a pile of system packages.
 
 This image is based on Bluefin (`ghcr.io/ublue-os/bluefin`, itself Fedora
 Silverblue + GNOME + Bluefin's desktop config), aiming toward Kali Linux-like
 pentesting functionality, built with no build-time package layering.
+
+### What "Declaratively-Assembled" Means Here
+
+Package *selection* is declared in data files, not imperative install steps:
+the Containerfile's build stages, `custom/brew/*.Brewfile`, `custom/pipx/*.pipx`,
+`custom/flatpaks/*.preinstall`, and `custom/distrobox/spinofin-kali.ini` all
+say what should be present, and existing installers (Homebrew, pipx,
+Flatpak, apt *inside* the Kali container) converge the system to that state.
+That declarative-manifest pattern — same one Bluefin itself uses for Brewfiles
+and distrobox — is what the no-layering policy below is built on.
+
+It does **not** mean the whole running system is one reproducible snapshot.
+The Kali container's expanded tool families (`ujust install-kali-web`,
+`-passwords`, etc. — see [Container tool families](#added-applications-runtime)
+below) and framework setup (`ujust setup-metasploit`, `setup-bloodhound`,
+`setup-powerview`, `setup-kerbrute`) are provisioned by idempotent `ujust`
+recipes that run `apt`/`pipx`/`go install` *on demand* inside the container.
+None of that is captured in `spinofin-kali.ini`, so `ujust rebuild-kali` gives
+you back exactly the manifest's baseline — not whatever toolsets or framework
+setup you'd added since (the recipe says as much when it runs: *"--replace
+wipes everything not baked into the manifest"*). If you need the same
+container back after a rebuild, re-run the same `install-kali-*` / `setup-*`
+commands, or run `ujust super-kali` again for the common set.
 
 ### No Build-Time Layering
 
@@ -277,7 +300,7 @@ Read `.agents/skills/finpilot-maintain.md` and `.agents/skills/finpilot-ci.md`, 
 
 ## Forking spinofin to build your own OS
 
-spinofin is itself a worked example of [finpilot](#finpilot): a custom bootc image assembled from the Bluefin ecosystem. You can start from spinofin the same way. These are finpilot's setup steps, adapted for **forking this repository** instead of using a template — everything below happens in *your* fork, and the result is your own declarative OS with spinofin's pipeline, no-layering policy, and tooling structure already wired.
+spinofin is itself a worked example of [finpilot](#finpilot): a custom bootc image assembled from the Bluefin ecosystem. You can start from spinofin the same way. These are finpilot's setup steps, adapted for **forking this repository** instead of using a template — everything below happens in *your* fork, and the result is your own declaratively-assembled OS with spinofin's pipeline, no-layering policy, and tooling structure already wired.
 
 If you only want to *run* spinofin, you don't need any of this — see [How to Get Started](#how-to-get-started-with-spinofin).
 
