@@ -144,7 +144,7 @@ build $target_image=IMAGE_NAME $tag=DEFAULT_TAG:
     LABELS=()
     LABELS+=("--label" "org.opencontainers.image.title=${target_image}")
     LABELS+=("--label" "org.opencontainers.image.version=${ver}")
-    LABELS+=("--label" "org.opencontainers.image.description=${IMAGE_DESC:-My Customized Universal Blue Image}")
+    LABELS+=("--label" "org.opencontainers.image.description=${IMAGE_DESC:-A declaratively-assembled image-based penetration testing distribution}")
     LABELS+=("--label" "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY_OWNER:-}/${target_image}/blob/${GITHUB_SHA:-}/Containerfile")
     LABELS+=("--label" "org.opencontainers.image.url=https://github.com/${GITHUB_REPOSITORY_OWNER:-}/${target_image}")
     LABELS+=("--label" "org.opencontainers.image.vendor=${IMAGE_VENDOR:-${REPO_ORG}}")
@@ -166,7 +166,7 @@ build $target_image=IMAGE_NAME $tag=DEFAULT_TAG:
     # index on the first CI build; if rechunk/push re-wraps the index and strips
     # it, set it on the push step instead. See README production notes.
     ANNOTATIONS=()
-    ANNOTATIONS+=("--annotation" "org.opencontainers.image.description=A declarative image-based penetration testing distribution")
+    ANNOTATIONS+=("--annotation" "org.opencontainers.image.description=A declaratively-assembled image-based penetration testing distribution")
 
     # Registry layer cache - speeds up rebuilds by reusing unchanged layers from GHCR
     # Cache write (REGISTRY_CACHE_WRITE=1) is set by CI for non-PR builds only
