@@ -104,27 +104,17 @@ jobs:
               - 'Justfile'
 
       # DIAGNOSTIC BRANCH ONLY -- DO NOT MERGE.
-      # Tests whether runner disk pressure explains the 8-minute layer commit
-      # in STEP 10 and the partial file contents. df runs BEFORE the reclaim on
-      # purpose: if headroom was already generous, the theory is disproven.
-      - name: Free disk space
-        if: steps.detect-changes.outputs.should_build == 'true' || github.event_name != 'pull_request'
+      # Disk pressure was DISPROVEN: 145G fs, 118G free, 19% used after a full
+      # build. The reclaim step is gone. An 8-minute commit for a two-file
+      # layer on an empty disk points at the storage driver instead -- vfs
+      # copies the whole filesystem per layer where overlay does copy-on-write,
+      # which would also explain 1h23m builds.
+      - name: Storage driver info
         shell: bash
         run: |
-          echo "=== disk before reclaim ==="
-          df -h / /var/lib/containers 2>/dev/null || df -h /
-          sudo rm -rf \
-            /usr/share/dotnet \
-            /usr/local/lib/android \
-            /opt/ghc \
-            /usr/local/.ghcup \
-            /usr/local/share/powershell \
-            /usr/local/share/chromium \
-            /usr/local/lib/node_modules \
-            /opt/hostedtoolcache/CodeQL \
-            || true
-          echo "=== disk after reclaim ==="
-          df -h / /var/lib/containers 2>/dev/null || df -h /
+          sudo podman info --format '{{ "{{" }}.Store.GraphDriverName{{ "}}" }}' || true
+          sudo podman info | sed -n '/graphOptions/,/graphStatus/p' || true
+          mount | grep -Ei 'overlay|containers' || echo "(no overlay/containers mounts)"
 
       - name: Build image
         if: steps.detect-changes.outputs.should_build == 'true' || github.event_name != 'pull_request'

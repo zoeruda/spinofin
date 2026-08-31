@@ -94,6 +94,11 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/tmp \
     /ctx/build/00-image-info.sh
 
+# DIAGNOSTIC BRANCH ONLY -- DO NOT MERGE.
+RUN echo "=== PROBE after-00-image-info ===" \
+    && (cat /usr/share/ublue-os/image-info.json || echo "(missing)") \
+    && grep PRETTY_NAME /usr/lib/os-release
+
 # NOTE: there is deliberately NO dnf configuration step here.
 #
 # The finpilot template sets `dnf5 config-manager setopt keepcache=1
@@ -120,6 +125,11 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/tmp \
     /ctx/build/10-build.sh
 
+# DIAGNOSTIC BRANCH ONLY -- DO NOT MERGE.
+RUN echo "=== PROBE after-10-build ===" \
+    && (cat /usr/share/ublue-os/image-info.json || echo "(missing)") \
+    && grep PRETTY_NAME /usr/lib/os-release
+
 # Branding: boot splash, GDM login logo, panel logo icon, fastfetch logo.
 # File overwrites + dconf defaults only -- no package layering. See
 # custom/branding/README.md for the per-surface spec.
@@ -128,12 +138,22 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/tmp \
     /ctx/build/15-branding.sh
 
+# DIAGNOSTIC BRANCH ONLY -- DO NOT MERGE.
+RUN echo "=== PROBE after-15-branding ===" \
+    && (cat /usr/share/ublue-os/image-info.json || echo "(missing)") \
+    && grep PRETTY_NAME /usr/lib/os-release
+
 # Regenerate initramfs so the Plymouth boot splash uses the spinofin watermark
 # (early-boot splash reads the initramfs, not /usr). Must run after branding.
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/boot \
     --mount=type=tmpfs,dst=/tmp \
     /ctx/build/16-initramfs.sh
+
+# DIAGNOSTIC BRANCH ONLY -- DO NOT MERGE.
+RUN echo "=== PROBE after-16-initramfs ===" \
+    && (cat /usr/share/ublue-os/image-info.json || echo "(missing)") \
+    && grep PRETTY_NAME /usr/lib/os-release
 
 # Host-shell aliases (kali, kalisudo) for the Kali toolbox container -- a
 # single /etc/profile.d file overlay, no setup step required. See
@@ -143,6 +163,11 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/tmp \
     /ctx/build/17-aliases.sh
 
+# DIAGNOSTIC BRANCH ONLY -- DO NOT MERGE.
+RUN echo "=== PROBE after-17-aliases ===" \
+    && (cat /usr/share/ublue-os/image-info.json || echo "(missing)") \
+    && grep PRETTY_NAME /usr/lib/os-release
+
 # Host sudo prompt disambiguation (host vs. Kali container) -- a single
 # /etc/sudoers.d file overlay, no setup step required. See
 # custom/sudo-prompt/README.md.
@@ -150,6 +175,11 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/boot \
     --mount=type=tmpfs,dst=/tmp \
     /ctx/build/18-sudo-prompt.sh
+
+# DIAGNOSTIC BRANCH ONLY -- DO NOT MERGE.
+RUN echo "=== PROBE after-18-sudo-prompt ===" \
+    && (cat /usr/share/ublue-os/image-info.json || echo "(missing)") \
+    && grep PRETTY_NAME /usr/lib/os-release
 
 ### CLEANUP
 ## Use Bluefin's clean-stage.sh to remove build artifacts before linting.
@@ -160,6 +190,11 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/tmp \
     --mount=type=tmpfs,dst=/boot \
     /ctx/build/clean-stage.sh
+
+# DIAGNOSTIC BRANCH ONLY -- DO NOT MERGE.
+RUN echo "=== PROBE after-clean-stage ===" \
+    && (cat /usr/share/ublue-os/image-info.json || echo "(missing)") \
+    && grep PRETTY_NAME /usr/lib/os-release
 
 ### /opt
 ## Makes /opt writeable by default. Needs to be here to make the main image
