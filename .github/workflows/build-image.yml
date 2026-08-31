@@ -80,7 +80,27 @@ jobs:
       - name: Setup runner
         uses: projectbluefin/actions/bootc-build/setup-runner@eb4c546389f19ad9e42f1af052623de73c620ebb # v1
         with:
+          # storage-backend: btrfs is a REQUEST, not a guarantee. The
+          # container-storage-action mounts its btrfs loopback under /mnt, and
+          # on runners without an ephemeral /mnt disk (e.g. the 145G larger
+          # runners) it logs only "::notice::/mnt mountpoint not detected.
+          # Skipping BTRFS loopback..." and continues. Podman then falls back
+          # to fuse-overlayfs with mountopt "nodev,fsync=0".
+          #
+          # That fallback caused real, shipped corruption: writes are never
+          # flushed, so a file written in a RUN step could be absent from that
+          # step's committed layer. Observed: image-info.json reverting to the
+          # base image's copy truncated mid-file (breaking ujust's jq parse),
+          # NUL-padded justfiles, and ~9 minutes to commit ANY layer -- even
+          # one running only `echo` -- which is what pushed builds past the
+          # 120-minute timeout.
+          #
+          # native-overlay uses the kernel overlay driver with rootful podman
+          # (the build already runs under sudo), so it does not depend on /mnt
+          # and does not disable fsync. Keep btrfs as the preference for
+          # runners that do have /mnt.
           storage-backend: btrfs
+          native-overlay: "true"
           update-podman: "true"
           install-tools: '["just"]'
 
