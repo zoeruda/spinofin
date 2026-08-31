@@ -120,6 +120,23 @@ jobs:
           command: |
             sudo -E "$(command -v just)" build "${IMAGE_NAME}" "${DEFAULT_TAG}"
 
+      # DIAGNOSTIC BRANCH ONLY -- DO NOT MERGE.
+      # Prints the two files 00-image-info.sh writes, straight out of the
+      # freshly-built local image. This branch never pushes (the Push step is
+      # gated to main/testing), so reading the local image is the only way to
+      # see the result.
+      - name: DIAG - dump image-info.json and os-release
+        shell: bash
+        run: |
+          echo "=== /usr/share/ublue-os/image-info.json ==="
+          sudo podman run --rm --entrypoint cat \
+            "localhost/${IMAGE_NAME}:${DEFAULT_TAG}" \
+            /usr/share/ublue-os/image-info.json || echo "(failed to read)"
+          echo "=== PRETTY_NAME from /usr/lib/os-release ==="
+          sudo podman run --rm --entrypoint grep \
+            "localhost/${IMAGE_NAME}:${DEFAULT_TAG}" \
+            PRETTY_NAME /usr/lib/os-release || echo "(failed to read)"
+
       - name: Get version label
         if: steps.detect-changes.outputs.should_build == 'true' || github.event_name != 'pull_request'
         id: version

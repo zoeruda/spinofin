@@ -180,6 +180,13 @@ build $target_image=IMAGE_NAME $tag=DEFAULT_TAG:
         fi
     fi
 
+    # DIAGNOSTIC BRANCH ONLY -- DO NOT MERGE.
+    # Forces a cache-free build to test whether :stable's stale cache chain is
+    # why /usr/share/ublue-os/image-info.json ships with stock Bluefin content
+    # while /usr/lib/os-release (written by the SAME script, same RUN step)
+    # is correct.
+    CACHE_ARGS=()
+
     ${PODMAN} build \
         "${BUILD_ARGS[@]}" \
         "${LABELS[@]}" \
