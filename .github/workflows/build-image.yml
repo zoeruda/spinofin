@@ -103,6 +103,29 @@ jobs:
               - 'custom/**'
               - 'Justfile'
 
+      # DIAGNOSTIC BRANCH ONLY -- DO NOT MERGE.
+      # Tests whether runner disk pressure explains the 8-minute layer commit
+      # in STEP 10 and the partial file contents. df runs BEFORE the reclaim on
+      # purpose: if headroom was already generous, the theory is disproven.
+      - name: Free disk space
+        if: steps.detect-changes.outputs.should_build == 'true' || github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          echo "=== disk before reclaim ==="
+          df -h / /var/lib/containers 2>/dev/null || df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /usr/local/share/powershell \
+            /usr/local/share/chromium \
+            /usr/local/lib/node_modules \
+            /opt/hostedtoolcache/CodeQL \
+            || true
+          echo "=== disk after reclaim ==="
+          df -h / /var/lib/containers 2>/dev/null || df -h /
+
       - name: Build image
         if: steps.detect-changes.outputs.should_build == 'true' || github.event_name != 'pull_request'
         id: build-image
@@ -119,6 +142,13 @@ jobs:
           retry_wait_seconds: 300
           command: |
             sudo -E "$(command -v just)" build "${IMAGE_NAME}" "${DEFAULT_TAG}"
+
+      # DIAGNOSTIC BRANCH ONLY -- DO NOT MERGE.
+      # always(): a failed build is the run whose peak usage matters most.
+      - name: Disk usage after build
+        if: always()
+        shell: bash
+        run: df -h / /var/lib/containers 2>/dev/null || df -h /
 
       # DIAGNOSTIC BRANCH ONLY -- DO NOT MERGE.
       # Prints the two files 00-image-info.sh writes, straight out of the
