@@ -4,7 +4,7 @@
   <img src="docs/assets/spinofin-logo-full.svg" alt="spinofin — a declaratively-assembled, image-based pentesting OS built on Bluefin" width="440">
 </p>
 
-> A declaratively-assembled, image-based pentesting OS — built on Bluefin. Kali-grade under the hood, GNOME-clean on the surface.
+> A declaratively-assembled, image-based pentesting toolkit — built on a verifiable Bluefin GNOME base. Convenient and partially disposable: run it like a sandbox, not a fortress.
 
 **This README serves three audiences:**
 
@@ -41,6 +41,9 @@ ujust verify-image
 ```
 
 If you're booted on `:testing`, this correctly reports "intentionally unsigned" instead of verifying `:stable` by mistake — it never defaults to checking a different tag than the one you're running. (It installs `cosign` via Homebrew first if it's missing. Pass an explicit `ujust verify-image stable` if you instead want to check what a fresh switch/upgrade would currently pull, independent of what's booted.) If you're forking this repo, see [Optional: Enable Image Signing](#optional-enable-image-signing) to set it up for your own registry.
+
+> [!NOTE]
+> This verification is **manual**. As shipped, `bootc` does not enforce signatures when it pulls or upgrades `:stable` — it will boot an unsigned or tampered `:stable` without complaint, so run `ujust verify-image` yourself. spinofin signs keyless (OIDC), which the host's `bootc`/policy path can't enforce; blocking unsigned `:stable` at pull time would require fixed-key signing, a trade-off spinofin hasn't made. See [SECURITY.md](SECURITY.md).
 
 ### 3. Get set up (ujust recipes)
 
@@ -82,11 +85,36 @@ GUI apps (Flatseal, Wireshark, Burp Suite Community, KeePassXC, Remmina) install
 
 ## What Makes this Raptor Different?
 
-**What this fork is for:** a declaratively-assembled, verifiable pentesting OS with Kali Linux-like tooling on a GNOME desktop, built using lessons from Bluefin and [Dakota](https://github.com/projectbluefin/dakota) (Bluefin's GNOME OS bootc prototype). It uses no build-time package layering — see "No Build-Time Layering" below — so the base image can move from Fedora Atomic to a true GNOME OS bootc image later without first unwinding a pile of system packages.
+**What this fork is for:** a declaratively-assembled pentesting toolkit with Kali Linux-like tooling on a GNOME desktop, built on a verifiable Bluefin base using lessons from Bluefin and [Dakota](https://github.com/projectbluefin/dakota) (Bluefin's GNOME OS bootc prototype). It uses no build-time package layering — see "No Build-Time Layering" below — so the base image can move from Fedora Atomic to a true GNOME OS bootc image later without first unwinding a pile of system packages.
 
 This image is based on Bluefin (`ghcr.io/ublue-os/bluefin`, itself Fedora
 Silverblue + GNOME + Bluefin's desktop config), aiming toward Kali Linux-like
 pentesting functionality, built with no build-time package layering.
+
+### Security model
+
+spinofin is a convenient, partially-disposable pentest toolkit on a verifiable
+Bluefin GNOME base — **not** a hardened, self-contained appliance. The single
+most important thing to understand before you rely on it:
+
+> [!WARNING]
+> The shared Kali container (`ujust setup-kali`) is **rootful**, has
+> **passwordless root inside**, and **shares your real `$HOME` and the host
+> network**. That is deliberate — raw-socket scans need `CAP_NET_RAW`, and the
+> tool exports (`msfconsole`, `impacket-*`, …) have to land in your
+> `~/.local/bin` — but it means the container protects the **host image's
+> immutability, not you**. A container escape, or a malicious proof-of-concept
+> you clone and run inside it, has straightforward reach to your home
+> directory, your SSH keys, and your host network. Run it like a sandbox, not a
+> fortress: prefer a throwaway VM for untrusted targets or untrusted tooling,
+> keep secrets off a box you also pentest from, and only point it at systems
+> you're authorized to test.
+
+The signed, immutable part of spinofin is the bootc **base image**. Most of the
+actual tooling is pulled at runtime from mutable sources (Homebrew, pipx,
+Flathub, and a rolling `kali-rolling` container), so "verifiable" applies to the
+base, not to the whole running system. See **[SECURITY.md](SECURITY.md)** for
+the full threat model and how to report a vulnerability.
 
 ### What "Declaratively-Assembled" Means Here
 
@@ -409,7 +437,9 @@ sudo systemctl reboot
 
 ## Optional: Enable Image Signing
 
-**spinofin already has signing enabled** for `:stable` (main) images — see the "Sign and publish" step in `.github/workflows/build-image.yml`, gated to the `main` branch so `:testing` stays unsigned. The steps below explain how it works and are what you'd adjust if you fork this repo for your own registry. Signing is strongly recommended for production use.
+**spinofin already has signing enabled** for `:stable` (main) images — see the "Sign and publish" step in `.github/workflows/build-image.yml`, gated to the `main` branch so `:testing` stays unsigned. The steps below explain how it works and are what you'd adjust if you fork this repo for your own registry.
+
+Note that **signing** (publishing signatures) is separate from **enforcing** them on the host. spinofin publishes keyless signatures but does not block an unsigned `:stable` at pull/upgrade time — the host's `bootc`/policy path verifies a fixed public key, which keyless OIDC signatures don't provide. Enforcement would mean switching to fixed-key signing; spinofin keeps keyless by choice. See [SECURITY.md](SECURITY.md).
 
 ### Why Sign Images?
 
@@ -451,7 +481,7 @@ Ready to take your custom OS to production? Enable these features for enhanced s
   - Prevents tampering and ensures authenticity
   - Uses keyless OIDC signing via GitHub Actions — no keys or secrets required
   - See "Optional: Enable Image Signing" section above for setup instructions
-  - Status: **Enabled** — `:stable` (main) images are signed; `:testing` is intentionally left unsigned
+  - Status: **Signatures published** — `:stable` (main) images are signed (keyless OIDC); `:testing` is intentionally unsigned. On-host **enforcement** (blocking an unsigned `:stable` at pull/upgrade) is not configured, and keyless signatures can't be enforced on-host — see [SECURITY.md](SECURITY.md)
 
 - [ ] **Enable Image Rechunking** (Recommended — but **deferred** on this base; see note)
   - Optimizes bootc image layers for better update performance
@@ -604,13 +634,16 @@ just run-vm-qcow2       # Test in browser-based VM
 
 ## Security
 
-The finpilot template that spinofin is built on provides security features for production use:
+See **[SECURITY.md](SECURITY.md)** for spinofin's threat model — most importantly the rootful, passwordless, home-sharing Kali container and what it does and does not protect — and for how to report a vulnerability.
 
-- Optional image signing with keyless OIDC cosign for cryptographic verification
-- Automated security updates via Renovate
-- Build provenance tracking
+Security-relevant features inherited from the finpilot template and the Bluefin base:
 
-Image signing is enabled for `:stable` (main) images; the other features listed are opt-in. When you're ready to enable the rest, see the "Love Your Image? Let's Go to Production" section above.
+- Image signing for `:stable` with keyless cosign/OIDC. Signatures are **published** but **not enforced on the host** — keyless signatures aren't enforceable by the `bootc`/policy path, and spinofin keeps keyless signing by choice (see SECURITY.md).
+- `ujust verify-image` for manual verification of the booted image.
+- SLSA build provenance / attestation on `:stable`.
+- Automated dependency and image-digest updates via Renovate.
+
+Treat spinofin as a convenient sandbox on a verifiable base, not a hardened appliance.
 
 ## Troubleshooting
 
