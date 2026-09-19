@@ -1,0 +1,45 @@
+# custom/quadlet/Containerfile
+#
+# The COMPLETE, declarative definition of the kalicli container's tools.
+#
+# This is NOT part of the spinofin host image build. build/10-build.sh only
+# COPIES this file into the image (to /usr/share/spinofin/quadlet/) as data.
+# `ujust setup-kalicli` runs `podman build` against it at RUNTIME, on the
+# user's machine, to produce a container-local, immutable `localhost/spinofin-kalicli`
+# image. Nothing here is layered into the bootc host image, so the no-layering
+# policy is untouched (that guard scans build/*.sh and the root Containerfile,
+# not this file).
+#
+# To change kalicli's tools durably: edit this file, then `ujust rebuild-kalicli`,
+# which rebuilds from here and reconciles the container back to the declared set.
+# (There's no per-tool ujust recipe. `ujust upgrade-kalicli` does an in-place apt
+# upgrade that KEEPS ad-hoc installs, so the running container can drift from
+# this file until the next rebuild -- rebuild is what makes it authoritative.)
+#
+# Renovate's dockerfile manager tracks the FROM line below and pins it to a
+# digest automatically.
+#
+# Rootless note: packages install as root at BUILD time (normal for any image).
+# At RUN time the container is rootless -- podman maps container UID 0 to the
+# invoking user's host UID -- so none of this grants host privilege. Scope is
+# deliberately narrow: CLI tools that speak TCP/HTTP and need neither raw
+# sockets (CAP_NET_RAW: nmap SYN scans, tcpdump) nor a systemd service
+# (msfdb, BloodHound/neo4j). Those live in the spinofin-kali distrobox instead.
+# Wordlists (seclists) are intentionally omitted to keep the image cheap to
+# rebuild; use ~/spinofin/work or the spinofin-kali box. Trusted host-native
+# tools (ffuf, gobuster, nikto, sslscan, hydra, john) are NOT duplicated here --
+# they come from Homebrew on the host; kalicli carries only the connect-based
+# tooling brew doesn't ship. impacket-scripts is also in the distrobox (which
+# exports it to the host); it's kept here too for in-sandbox AD work.
+
+FROM docker.io/kalilinux/kali-rolling:latest
+
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates curl wget git vim nano jq file openssl \
+      python3 python3-venv pipx \
+      sqlmap wfuzz whatweb \
+      netcat-openbsd socat rlwrap proxychains4 smbclient ldap-utils dnsutils \
+      impacket-scripts netexec enum4linux-ng \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*

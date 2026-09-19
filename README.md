@@ -74,6 +74,31 @@ ujust install-kali-web        # e.g. add the web-app testing family (see list fo
 ujust enter-kali              # drop into a shell in the container
 ```
 
+Lighter CLI tooling lives in a separate **rootless** container (`spinofin-kalicli`, driven by the `kalicli` command), which cannot see your home directory. It's defined declaratively by two files that ship in the image — `custom/quadlet/Containerfile` (its tools) and `custom/quadlet/spinofin-kalicli.container` (its runtime, a podman [Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html)) — so `setup` builds an immutable local image and runs it as a user systemd service. Prefer it for anything that doesn't need root or raw sockets:
+
+```bash
+ujust setup-kalicli           # build the rootless image + start it as a service
+ujust upgrade-kalicli         # apt update & full-upgrade in place (keeps what you added)
+ujust rebuild-kalicli         # from scratch from the Containerfile, discards changes (prompts)
+ujust kalicli-status          # built? running? where's the shared dir?
+ujust remove-kalicli          # delete the container + image (your files are untouched)
+```
+
+`upgrade-kalicli` runs an in-place `apt update && full-upgrade` inside the running container, keeping anything you've installed on top; `rebuild-kalicli` throws the container away and rebuilds from the Containerfile (a fresh base and the declared toolset), discarding in-container changes. Files pass through `~/spinofin/work`, which appears as `/work` inside the container — that directory is the only host path `kalicli` can reach.
+
+Both containers ship baked-in host-shell aliases (no setup step) so you don't need the full `ujust` / `distrobox` invocations:
+
+```bash
+# spinofin-kali (rootful; shares $HOME, has CAP_NET_RAW):
+kali <cmd>                    # run in the container as your user (no args = shell)
+kalisudo <cmd>                # run <cmd> as root in the container
+iskali                        # is spinofin-kali present? (guard: iskali && kali nmap ...)
+
+# kalicli (rootless; isolated, only ~/spinofin/work shared):
+kalicli <cmd>                 # run in the rootless container (no args = shell)
+iskalicli                     # is kalicli set up? (guard: iskalicli && kalicli sqlmap ...)
+```
+
 Optional — switch your shell between bash, zsh, and fish (host and/or the Kali container are independent):
 
 ```bash
@@ -115,6 +140,34 @@ actual tooling is pulled at runtime from mutable sources (Homebrew, pipx,
 Flathub, and a rolling `kali-rolling` container), so "verifiable" applies to the
 base, not to the whole running system. See **[SECURITY.md](SECURITY.md)** for
 the full threat model and how to report a vulnerability.
+
+#### Two containers, two trade-offs
+
+Because of the above, spinofin ships a second, safer container and steers you
+toward it:
+
+| | `spinofin-kali` (distrobox) | `kalicli` (bare podman) |
+|---|---|---|
+| Privilege | **Rootful** — container-root is host root | **Rootless** — container-root maps to your own UID |
+| Host filesystem | Entire `/` mounted at `/run/host` | Not mounted |
+| Your `$HOME` | Shared | Not shared |
+| Shared path | All of it | Only `~/spinofin/work` → `/work` |
+| Binaries on your `PATH` | Yes (`msfconsole`, `impacket-*`, …) | None |
+| Raw sockets (`CAP_NET_RAW`) | Yes | No |
+| Tools defined by | `additional_packages=` in the `.ini`, apt-installed into a mutable container | `Containerfile` + Quadlet, built into an immutable image |
+| Update model | `upgrade-kali` (apt in place) | `upgrade-kalicli` (apt in place); `rebuild-kalicli` to reconcile to the Containerfile |
+| Use it for | nmap SYN scans, tcpdump, msfdb, BloodHound | Everything else |
+
+**Prefer `kalicli` whenever the tool doesn't need root or raw sockets** — most
+of them don't. It's the right place to run an untrusted proof-of-concept you
+cloned off GitHub, because it cannot reach your SSH keys or your home
+directory. Reach for `spinofin-kali` only when you actually need the
+capabilities that make it dangerous, and when running trusted code.
+
+One thing worth understanding: `kalicli` runs you as `root` inside, and that is
+the *safer* option, not the riskier one. Rootless podman maps container UID 0 to
+your own unprivileged host UID, so that "root" has no authority on the host at
+all. That's why there's no `kaliclisudo` alias — none is needed.
 
 ### What "Declaratively-Assembled" Means Here
 
@@ -182,7 +235,7 @@ through Homebrew or Flatpak instead:
   - `certipy-ad` — AD Certificate Services enumeration and exploitation (ESC1–ESC16 attack paths). Pure-Python `py3-none-any` wheel; all deps ship prebuilt manylinux wheels.
   - `sslyze` — deep TLS/SSL server analysis: ciphers, protocols, certificates, and known attack vulns (Heartbleed, ROBOT, CRIME, etc.) with structured JSON output. Its C extension (`nassl`) ships prebuilt `manylinux2014_x86_64` wheels for Python 3.10+, so no build headers are needed on the host.
   - `ldapdomaindump` — Active Directory LDAP dump: enumerates users, groups, computers, policies, and trusts and writes HTML/JSON/grep-friendly output. Quick first-look at an AD environment without standing up Neo4j. Pure-Python deps, no build headers.
-  - Routed to the Kali container instead (documented in the list file): `powerview.py` (needs both `libkrb5-dev` and `python3-dev` build headers — `gssapi` ships no Linux manylinux wheels and always builds from source, requiring krb5 headers *and* `Python.h`; install with `ujust setup-powerview`) and `wfuzz` (only a stale Python-2 brew tap exists; now baked into the container via apt).
+  - Routed to the Kali container instead (documented in the list file): `powerview.py` (needs both `libkrb5-dev` and `python3-dev` build headers — `gssapi` ships no Linux manylinux wheels and always builds from source, requiring krb5 headers *and* `Python.h`; install with `ujust setup-powerview`) and `wfuzz` (only a stale Python-2 brew tap exists; now baked into the **kalicli** container via apt).
 - **Container tool families (Kali metapackages)**: pulled on demand into the shared rootful Kali container via the recipes in [`custom/ujust/kali-toolsets.just`](custom/ujust/kali-toolsets.just) (container-local `apt`, never host layering). `ujust list-kali-toolsets` lists them; e.g. `ujust install-kali-web`, `-passwords`, `-information-gathering`, `-exploitation`. Hardware families (wireless, bluetooth, rfid, sdr) are intentionally omitted pending host device passthrough.
 - **Container-baked tooling, wordlists & databases**: declared in [`custom/distrobox/spinofin-kali.ini`](custom/distrobox/spinofin-kali.ini) and managed by recipes in [`custom/ujust/kali-container.just`](custom/ujust/kali-container.just). Baked into the container at assemble time:
   - `metasploit-framework` + `postgresql` — core framework and its database backend.
@@ -197,10 +250,6 @@ through Homebrew or Flatpak instead:
   - `golang-go` — provides `/usr/bin/go`; build dependency for `kerbrute`, installed with `ujust setup-kerbrute` (see below). No Kali apt package exists for `kerbrute` itself, and it stays off the host to avoid a second host-side package manager for a single tool.
   - `rlwrap` — readline wrapper for tools/shells with no line-editing of their own (e.g. raw `nc` listeners). Declared on **both** sides: also brew-installed on the host (`custom/brew/default.Brewfile`) for host tools piped through it directly (`rlwrap <tool>`), while the container's own copy covers raw shells caught inside it (`kali rlwrap nc -lvnp 4444`).
   - `faketime` — reports a spoofed system time to a wrapped command (`faketime '<time spec>' <cmd>`); useful for defeating naive time-based checks or reproducing time-window bugs during an engagement. Container-only; no host brew formula for this in the repo.
-  - `netexec` (`nxc`) — SMB / LDAP / WinRM / RDP / SSH / MSSQL lateral movement and enumeration; the actively maintained CrackMapExec successor.
-  - `enum4linux-ng` — next-gen SMB/Samba/AD enumeration with JSON/YAML output.
-  - `sqlmap` — automated SQL injection and database takeover.
-  - `wfuzz` — web application fuzzer (forms, headers, parameters, directories); only a stale Python-2 brew tap exists upstream so the Kali apt build is the clean home.
   - `seclists` + `wordlists` — Kali wordlist trees at the canonical `/usr/share/seclists` and `/usr/share/wordlists` (`seclists` is ~1 GB+, so the assemble is heavier by design).
   - `systemd` + `libpam-systemd` — required because the container runs as an init container (`init=true` in the `.ini`) so that systemd-managed services (BloodHound CE, PostgreSQL) work as they do on stock Kali.
 
@@ -216,12 +265,30 @@ through Homebrew or Flatpak instead:
   - `ujust kali-status` — a one-glance summary of what's actually set up: Metasploit (msfdb + postgresql), BloodHound, impacket, wordlists, powerview, and kerbrute. Each is marked `[✓]` (fully set up), `[~]` (installed/staged in the container but not yet exported to the host, or not yet linked), or `[ ]` (not set up), with the recipe to run either way, plus the container's current login shell. A single `distrobox enter` round-trip batches every container-side check (dpkg/systemctl/file-existence) into one pass, so it stays fast regardless of how much it checks. Read-only — never installs or changes anything. Exits early with a "not set up" message (pointing at `setup-kali`/`super-kali`) if the container doesn't exist yet.
   - `ujust toggle-shell` *(host)* — pick the shell **new terminals** launch (bash / zsh / fish). Interactive by default; also **scriptable** — `ujust toggle-shell zsh` skips the prompt (validated against the same bash/zsh/fish set), handy for automated provisioning. All three already ship on the Bluefin base, so nothing is normally installed; if one is genuinely missing (e.g. a future Track-B GNOME OS base) it's pulled via **brew** — user-scoped, never `rpm-ostree`, so the host stays pristine. It deliberately does **not** change your login shell: Bluefin ships no `chsh`, editing `/etc/passwd` doesn't change how the terminal launches, and pointing a login shell at a brew shell is a known way to lose brew's PATH. Instead it sets the **default Ptyxis profile's custom command** — the upstream-recommended way to switch shells on Bluefin — so new tabs/windows open in your choice; picking `bash` clears the override. Applies to **new** terminals only (run `exec <shell>` for the current one). If your terminal isn't Ptyxis, it prints the manual profile setting instead of guessing.
   - `ujust toggle-kali-shell` *(container)* — the counterpart for the Kali box: pick the shell it launches when you `ujust enter-kali` (bash / zsh / fish). Interactive by default; also **scriptable** — `ujust toggle-kali-shell zsh` skips the prompt (validated against the same bash/zsh/fish set). Here the classic Linux approach *is* correct — `distrobox enter` runs the container user's **login shell** — so this installs the shell container-side via `apt` if missing (container-local; does not touch the host or the no-layering policy) and then `usermod -s` sets it. It installs **before** switching on purpose: `distrobox enter` breaks entirely if the login shell points at a binary that isn't present. zsh/fish here are container-local and **not** declared in `spinofin-kali.ini`, so `ujust rebuild-kali` recreates the box with its default (`bash`) — re-run `toggle-kali-shell` after a rebuild.
+- **kalicli container tooling (rootless)**: a second CLI container, declared entirely by [`custom/quadlet/Containerfile`](custom/quadlet/Containerfile) (its tools) and [`custom/quadlet/spinofin-kalicli.container`](custom/quadlet/spinofin-kalicli.container) (a podman Quadlet for its runtime), built at runtime by `ujust setup-kalicli` into an immutable `localhost/spinofin-kalicli` image. Unlike the rootful `spinofin-kali` distrobox above, this maps container-root to your own UID, mounts no host filesystem, and shares only `~/spinofin/work` → `/work` — prefer it for any tool that doesn't need root or raw sockets, and for running untrusted code. Tools baked into the image (grouped; see the Containerfile):
+  - **Base / scripting:** `curl`, `wget`, `git`, `vim`, `nano`, `jq`, `file`, `openssl`, `python3` (+ `python3-venv`), `pipx`, `ca-certificates`.
+  - **Web / app testing:** `sqlmap` (SQLi takeover), `wfuzz` (form/parameter fuzzing), `whatweb` (tech fingerprinting).
+  - **Network clients / pivoting:** `netcat-openbsd`, `socat`, `rlwrap`, `proxychains4`, `smbclient`, `ldap-utils`, `dnsutils` (`dig`/`nslookup`).
+  - **AD / SMB (connect-based, no raw sockets):** `impacket-scripts` (`impacket-*` inside the box), `netexec` (`nxc`), `enum4linux-ng`.
+
+  kalicli carries the connect-based AD/SMB/web tooling that Homebrew doesn't ship host-native; trusted tools that brew *does* provide (`ffuf`, `gobuster`, `nikto`, `sslscan`, `hydra`, `john`) are deliberately **not** duplicated here — use the host-native brew copies for those. Nothing needing `CAP_NET_RAW` (nmap SYN scans, `tcpdump`) or a systemd service (`msfdb`, BloodHound) is here either — those stay in `spinofin-kali`. `impacket-scripts` is the one tool intentionally in both containers (the distrobox exports it to the host; this copy is for in-sandbox AD work). Wordlists (`seclists`) are omitted to keep the image cheap to rebuild; use `~/spinofin/work` or the distrobox. To add a tool *permanently*, declare it in the Containerfile and rebuild; an ad-hoc `apt install` inside the container is kept by `ujust upgrade-kalicli` but discarded by `ujust rebuild-kalicli`, which reconciles back to the declared toolset.
+
+  Recipes ([`custom/ujust/kalicli-container.just`](custom/ujust/kalicli-container.just)):
+  - `ujust setup-kalicli` — build the image from the Containerfile and start it as a rootless `systemctl --user` service (the Quadlet-generated `spinofin-kalicli.service`). Creates `~/spinofin/work`, the one shared path. Idempotent.
+  - `ujust upgrade-kalicli` — in-place `apt update` + `full-upgrade` inside the running container, **keeping** anything you installed on top. Non-destructive; may drift from the Containerfile (that's the trade-off). Starts the container first if it's stopped.
+  - `ujust rebuild-kalicli` — remove the container and image and rebuild from the Containerfile, reconciling back to the declared toolset (and picking up a newer base). Discards in-container changes, including anything added via `upgrade-kalicli`; prompts first. `~/spinofin/work` is never touched.
+  - `ujust remove-kalicli` — stop and delete the container and its built image; leaves `~/spinofin/work` alone. The Quadlet unit ships with the image, so it stays (inert without the built image) and `setup-kalicli` brings it back.
+  - `ujust kalicli-status` — read-only: whether the image is built, whether `spinofin-kalicli.service` is active, and where the shared dir is. Tools come from the image, so there's no per-package reconciliation to report.
 - **Host-shell aliases for the container** (baked into the image, no setup step): `kali` and `kalisudo`, declared in [`custom/aliases/`](custom/aliases/README.md) and shipped the same way as `custom/branding/` — a plain `/etc/profile.d/*.sh` file overlay (not a package), live as soon as you boot the image.
   - `kali <cmd>` — run `<cmd>` in the `spinofin-kali` container as your user. No args drops you into an interactive shell (same as `ujust enter-kali`).
   - `kalisudo <cmd>` — same, but as root in the container; this is the shorthand for `distrobox enter --root spinofin-kali -- sudo <cmd>`.
   - `iskali` — report whether the `spinofin-kali` container exists (exit 0 if present, non-zero if not). Handy as a guard before the two above, e.g. `iskali && kali nmap …`, or just to check whether you still need `ujust setup-kali`.
   - **Existence guard:** before calling `distrobox enter`, both check the container actually exists. Plain `distrobox enter` on a non-existent container name does **not** fail cleanly — by default it interactively offers to create a new container under that name using the *host's* default image (Fedora) instead, which is exactly the wrong thing here. If `spinofin-kali` hasn't been created yet, you get a clear message pointing at `ujust setup-kali` instead of that prompt.
   - Targets `bash` (Bluefin's default interactive shell) via Fedora's `/etc/bashrc` → `/etc/profile.d` convention, which covers both login and ordinary new-terminal sessions. zsh users will need to `source /etc/profile.d/spinofin-kali-aliases.sh` from their own `~/.zshrc`.
+- **Host-shell aliases for kalicli** (baked into the image, no setup step): `kalicli` and `iskalicli`, declared in [`custom/aliases/`](custom/aliases/README.md) and shipped the same `/etc/profile.d/*.sh` way as the `kali` aliases above.
+  - `kalicli <cmd>` — run `<cmd>` in the rootless `kalicli` container. No args drops you into an interactive shell. It starts `spinofin-kalicli.service` on demand first (there is no auto-start), so `kalicli` works straight after a reboot without any `systemctl` dance.
+  - `iskalicli` — report whether kalicli is set up: exit `0` if the local image is built (also prints running vs. stopped), `1` if it isn't set up yet (points at `ujust setup-kalicli`), `2` if podman is somehow missing. Handy as a guard, e.g. `iskalicli && kalicli sqlmap …`.
+  - **No `kaliclisudo`, by design:** kalicli is rootless — podman maps container-root to your own UID, so you are *already* root inside and it carries no host authority. A sudo variant would be meaningless, and there's nothing to disambiguate since kalicli shares no `$HOME` (contrast `kalisudo` and the sudo-prompt note below, which exist because the distrobox is rootful and home-sharing).
 - **Sudo prompt disambiguation** (baked into the image + set up by `ujust setup-kali`): a sudo password prompt is ambiguous about whether it wants the host's or the container's password by default. Declared in [`custom/sudo-prompt/`](custom/sudo-prompt/README.md) (host side, shipped the same way as `custom/aliases/`) and in `setup-kali` itself (container side). Both set `Defaults passprompt="[sudo] password for %p (on %h): "` — the same line, resolving differently because `%h` (sudo's hostname escape) differs by context: the container's hostname is explicitly pinned to `spinofin-kali` via `hostname=` in the `.ini`, so you always see e.g. `[sudo] password for zoe (on spinofin-kali):` inside the box vs. `...(on <real-hostname>):` on the host. This only ever *adds* a file under `/etc/sudoers.d/` — it never edits the main `/etc/sudoers`, so a mistake here degrades gracefully (sudo just skips that one file) rather than locking out sudo entirely.
 - **GUI Apps (Flatpak)**: preinstalled on first boot from Flathub (all IDs validated by `validate-flatpaks.yml`):
   - `com.github.tchx84.Flatseal` — Flatpak permission manager. The original preinstall sanity-check (the Bluefin base does not already ship it), and useful for managing the permissions of the sandboxed security GUIs below.

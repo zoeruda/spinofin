@@ -43,6 +43,8 @@ do not point it at systems you are not authorized to test.
 
 Practical guidance:
 
+- **Prefer the `kalicli` container (below) for anything that doesn't need root
+  or raw sockets.** Most CLI tooling doesn't.
 - Prefer a throwaway machine or VM for engagements involving untrusted targets
   or untrusted tooling.
 - Keep secrets (client data, credentials, SSH keys) off a box you also use as a
@@ -51,6 +53,45 @@ Practical guidance:
   a real neo4j password immediately after `ujust setup-bloodhound` (it ships with
   the neo4j default of `neo4j`/`neo4j` until you change it, and the container
   shares host networking).
+
+### `kalicli`: the safer container, and what it actually buys you
+
+`ujust setup-kalicli` creates a second container that is **not** a distrobox.
+It is plain rootless podman with no distrobox host integration:
+
+- **rootless** — podman maps container UID 0 to your own host UID, so `root`
+  inside `kalicli` is treated by the kernel as your unprivileged user. A process
+  that escapes gains no host privilege. This is why there is no `kaliclisudo`;
+  you are already root inside, and that root has no host authority.
+- **no `/run/host`** — the host filesystem is not mounted.
+- **no `$HOME` share** — your home directory, and therefore your SSH keys, are
+  not reachable.
+- **no exported binaries** — nothing is placed on your host `PATH`, so there is
+  no wrapper-hijack surface.
+- **one explicit seam** — `~/spinofin/work` is mounted at `/work`. That
+  directory is the *only* host path the container can read or write.
+- **immutable and declarative** — its tools come from
+  `custom/quadlet/Containerfile` and its runtime from a podman Quadlet
+  (`custom/quadlet/spinofin-kalicli.container`), both shipped in the image. `setup-kalicli`
+  builds a local image and runs it as a `systemctl --user` service. The declared
+  toolset is the Containerfile; `ujust upgrade-kalicli` applies in-place apt
+  updates (which can drift from that declaration, but are kept), and `ujust
+  rebuild-kalicli` reconciles back to it from scratch.
+
+Prefer it for any tool that does not need root or raw sockets, and especially
+for running untrusted code such as proof-of-concept exploits from the internet.
+
+Honest limits:
+
+- Anything you place in `~/spinofin/work` **is** reachable by the container.
+  That is the seam; keep credentials and client data out of it.
+- Rootless networking uses pasta/slirp4netns: no raw sockets (so no nmap SYN
+  scans or tcpdump) and slower bulk transfers.
+- Container isolation is not a security boundary of the same strength as a VM.
+  A kernel-level container escape is still a kernel-level container escape. For
+  genuinely hostile code, use a disposable VM.
+- The base tracks `kali-rolling` via the Containerfile `FROM` (Renovate pins it
+  to a digest). Rebuild to pick up base/tool updates.
 
 ### The tooling surface is not fully verified or pinned
 
