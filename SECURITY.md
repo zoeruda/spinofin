@@ -20,7 +20,7 @@ disposable pentest tooling. It is deliberately **not** a hardened, self-containe
 appliance. Treat it as a convenient sandbox on top of a solid base — not as an
 isolation boundary.
 
-### The Kali container is rootful, passwordless-root, and shares your home
+### The Kali container is rootful and shares your home
 
 Heavy tooling lives in a single shared Kali distrobox container
 (`custom/distrobox/spinofin-kali.ini`, managed by
@@ -28,8 +28,10 @@ Heavy tooling lives in a single shared Kali distrobox container
 
 - **rootful** (`root=true`) — it runs from root's container storage and holds
   real host-kernel capabilities (`CAP_NET_RAW`, etc.) so raw-socket scans work;
-- **passwordless-root inside** — `sudo` in the container needs no password (the
-  `ujust` recipes and toolset installers rely on this);
+- **root inside, with host reach** — the container is rootful; its `sudo` takes
+  a password (distrobox has you set one on first `ujust enter-kali`), and once
+  you have root it maps to real host root over the mounted host filesystem, so
+  the password is a speed bump, not a boundary;
 - **home- and network-sharing** — distrobox mounts your real `$HOME` and shares
   the host network so exported wrappers (`msfconsole`, `impacket-*`, …) can land
   in `~/.local/bin` and reach the network.

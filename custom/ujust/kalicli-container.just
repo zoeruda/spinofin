@@ -38,7 +38,7 @@ kalicli_containerfile := "/usr/share/spinofin/quadlet/Containerfile"
 kalicli_workdir := "spinofin/work"
 
 # Build the rootless kalicli image from its Containerfile and start it
-[group('Kali')]
+[group('Kali CLI')]
 setup-kalicli:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -95,8 +95,36 @@ setup-kalicli:
     echo "that is the only host path kalicli can reach. Prefer kalicli over the"
     echo "spinofin-kali box for anything that does not need root or raw sockets."
 
+# Enter an interactive shell in the kalicli container (same as the `kalicli` alias)
+[group('Kali CLI')]
+enter-kalicli:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Nearly identical to the `kalicli` alias with no arguments, and kept for
+    # parity with `enter-kali` -- plus it works when the alias isn't available
+    # (a non-interactive shell, or before /etc/profile.d is sourced). The alias
+    # is the richer path (it forwards `kalicli <cmd>`); this is just the shell.
+    if ! command -v podman >/dev/null 2>&1; then
+        echo "podman not found on host." >&2
+        exit 1
+    fi
+    if ! podman image exists "{{ kalicli_image }}"; then
+        echo "'{{ kalicli_box }}' isn't set up yet. Run 'ujust setup-kalicli' first." >&2
+        exit 1
+    fi
+    # Start on demand (no auto-start; may be stopped after a reboot).
+    if ! systemctl --user is-active --quiet "{{ kalicli_box }}" 2>/dev/null; then
+        systemctl --user start "{{ kalicli_box }}"
+    fi
+    # Interactive shell in the rootless container. You are root inside, but that
+    # root maps to your own host UID -- no password, and no host authority (so
+    # no sudo-password prompt like enter-kali has). Leaving via exit/Ctrl-D
+    # inherits the last command's status and is not a recipe failure, so the
+    # exit code is discarded, matching enter-kali.
+    podman exec -it "{{ kalicli_box }}" /bin/bash -l || true
+
 # Upgrade packages inside the kalicli container in place (keeps what you added)
-[group('Kali')]
+[group('Kali CLI')]
 upgrade-kalicli:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -129,7 +157,7 @@ upgrade-kalicli:
     echo "(Use 'ujust rebuild-kalicli' to rebuild from the Containerfile instead.)"
 
 # Destroy the kalicli image + container and rebuild from the Containerfile (prompts)
-[group('Kali')]
+[group('Kali CLI')]
 rebuild-kalicli:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -154,7 +182,7 @@ rebuild-kalicli:
     ujust setup-kalicli
 
 # Show whether kalicli is built, running, and where its one shared path is
-[group('Kali')]
+[group('Kali CLI')]
 kalicli-status:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -189,7 +217,7 @@ kalicli-status:
     echo "To change them, edit that file and run 'ujust rebuild-kalicli'."
 
 # Remove the kalicli container and built image (leaves ~/spinofin/work untouched)
-[group('Kali')]
+[group('Kali CLI')]
 remove-kalicli:
     #!/usr/bin/env bash
     set -euo pipefail
