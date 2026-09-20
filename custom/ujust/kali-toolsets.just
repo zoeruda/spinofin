@@ -32,7 +32,7 @@ install-kali-toolset family:
     meta="kali-tools-{{ family }}"
     echo "Installing ${meta} inside '{{ kali_box }}' (container-local apt)."
     echo "Some families are multi-GB and can take a while on first install."
-    # Runs as root INSIDE the container via distrobox's passwordless sudo.
+    # Runs the install as root inside the rootful container.
     # DEBIAN_FRONTEND=noninteractive avoids debconf prompts hanging the install
     # (e.g. the wireshark 'allow non-root capture?' question takes its default).
     distrobox enter --root {{ kali_box }} -- sudo bash -lc \

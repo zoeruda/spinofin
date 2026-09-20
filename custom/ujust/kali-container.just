@@ -286,7 +286,7 @@ upgrade-kali:
     # Covers every apt-managed tool in one pass: the manifest's additional_packages
     # (metasploit-framework, impacket-scripts, nmap, tcpdump, ...) AND any
     # `ujust install-kali-<family>` metapackages, since those are all apt packages
-    # in this same container. Runs as root via distrobox's passwordless sudo, with
+    # in this same container. Runs as root inside the rootful container, with
     # DEBIAN_FRONTEND=noninteractive so a package's post-install prompt (e.g.
     # wireshark's "allow non-root capture?") takes its default instead of hanging.
     #
@@ -495,8 +495,7 @@ setup-metasploit:
     #   exits otherwise). It writes a SYSTEM-WIDE config to
     #   /usr/share/metasploit-framework/config/database.yml, so the exported
     #   msfconsole -- which runs as your user -- reads the same config and
-    #   connects to the same database. distrobox provides passwordless sudo
-    #   inside the container.
+    #   connects to the same database.
     # - This recipe only needs to run ONCE. `msfdb init` is the one command
     #   here that touches the database schema, and it's kept OUT of any
     #   reboot-time path on purpose -- there's no "rerun this after every

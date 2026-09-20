@@ -71,7 +71,7 @@ ujust upgrade-kali            # update the container's apt tooling in place (kee
 ujust kali-status             # see what's installed at a glance
 ujust list-kali-toolsets      # list the available Kali tool families
 ujust install-kali-web        # e.g. add the web-app testing family (see list for the rest)
-ujust enter-kali              # drop into a shell in the container
+ujust enter-kali              # drop into a shell (first run: set a container sudo password)
 ```
 
 Lighter CLI tooling lives in a separate **rootless** container (`spinofin-kalicli`, driven by the `kalicli` command), which cannot see your home directory. It's defined declaratively by two files that ship in the image — `custom/quadlet/Containerfile` (its tools) and `custom/quadlet/spinofin-kalicli.container` (its runtime, a podman [Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html)) — so `setup` builds an immutable local image and runs it as a user systemd service. Prefer it for anything that doesn't need root or raw sockets:
@@ -82,6 +82,7 @@ ujust upgrade-kalicli         # apt update & full-upgrade in place (keeps what y
 ujust rebuild-kalicli         # from scratch from the Containerfile, discards changes (prompts)
 ujust kalicli-status          # built? running? where's the shared dir?
 ujust remove-kalicli          # delete the container + image (your files are untouched)
+ujust enter-kalicli           # drop into a shell (same as running `kalicli` with no args)
 ```
 
 `upgrade-kalicli` runs an in-place `apt update && full-upgrade` inside the running container, keeping anything you've installed on top; `rebuild-kalicli` throws the container away and rebuilds from the Containerfile (a fresh base and the declared toolset), discarding in-container changes. Files pass through `~/spinofin/work`, which appears as `/work` inside the container — that directory is the only host path `kalicli` can reach.
@@ -123,9 +124,9 @@ Bluefin GNOME base — **not** a hardened, self-contained appliance. The single
 most important thing to understand before you rely on it:
 
 > [!WARNING]
-> The shared Kali container (`ujust setup-kali`) is **rootful**, has
-> **passwordless root inside**, and **shares your real `$HOME` and the host
-> network**. That is deliberate — raw-socket scans need `CAP_NET_RAW`, and the
+> The shared Kali container (`ujust setup-kali`) is **rootful**, gives you
+> **root inside** (its `sudo` takes a password you set on first `ujust
+> enter-kali`), and **shares your real `$HOME` and the host network**. That is deliberate — raw-socket scans need `CAP_NET_RAW`, and the
 > tool exports (`msfconsole`, `impacket-*`, …) have to land in your
 > `~/.local/bin` — but it means the container protects the **host image's
 > immutability, not you**. A container escape, or a malicious proof-of-concept
@@ -279,6 +280,7 @@ through Homebrew or Flatpak instead:
   - `ujust rebuild-kalicli` — remove the container and image and rebuild from the Containerfile, reconciling back to the declared toolset (and picking up a newer base). Discards in-container changes, including anything added via `upgrade-kalicli`; prompts first. `~/spinofin/work` is never touched.
   - `ujust remove-kalicli` — stop and delete the container and its built image; leaves `~/spinofin/work` alone. The Quadlet unit ships with the image, so it stays (inert without the built image) and `setup-kalicli` brings it back.
   - `ujust kalicli-status` — read-only: whether the image is built, whether `spinofin-kalicli.service` is active, and where the shared dir is. Tools come from the image, so there's no per-package reconciliation to report.
+  - `ujust enter-kalicli` — drop into an interactive shell in the container (starts it on demand). Nearly the same as running the `kalicli` alias with no arguments; kept for parity with `enter-kali` and for shells where the alias isn't sourced. No sudo-password prompt — kalicli is rootless, so you're already root inside with no host authority.
 - **Host-shell aliases for the container** (baked into the image, no setup step): `kali` and `kalisudo`, declared in [`custom/aliases/`](custom/aliases/README.md) and shipped the same way as `custom/branding/` — a plain `/etc/profile.d/*.sh` file overlay (not a package), live as soon as you boot the image.
   - `kali <cmd>` — run `<cmd>` in the `spinofin-kali` container as your user. No args drops you into an interactive shell (same as `ujust enter-kali`).
   - `kalisudo <cmd>` — same, but as root in the container; this is the shorthand for `distrobox enter --root spinofin-kali -- sudo <cmd>`.
@@ -701,7 +703,7 @@ just run-vm-qcow2       # Test in browser-based VM
 
 ## Security
 
-See **[SECURITY.md](SECURITY.md)** for spinofin's threat model — most importantly the rootful, passwordless, home-sharing Kali container and what it does and does not protect — and for how to report a vulnerability.
+See **[SECURITY.md](SECURITY.md)** for spinofin's threat model — most importantly the rootful, home-sharing Kali container and what it does and does not protect — and for how to report a vulnerability.
 
 Security-relevant features inherited from the finpilot template and the Bluefin base:
 
