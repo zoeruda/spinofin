@@ -40,6 +40,6 @@ RUN apt-get update \
       python3 python3-venv pipx \
       sqlmap wfuzz whatweb \
       netcat-openbsd socat rlwrap proxychains4 smbclient ldap-utils dnsutils \
-      impacket-scripts netexec enum4linux-ng \
+      impacket-scripts netexec enum4linux-ng evil-winrm \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*

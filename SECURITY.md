@@ -53,8 +53,9 @@ Practical guidance:
   pentest platform — or accept that the container can reach them.
 - Rotate any default service credentials the tooling creates. In particular, set
   a real neo4j password immediately after `ujust setup-bloodhound` (it ships with
-  the neo4j default of `neo4j`/`neo4j` until you change it, and the container
-  shares host networking).
+  the neo4j default of `neo4j`/`neo4j` until you change it). PostgreSQL, Neo4j,
+  and the BloodHound API are configured to bind strictly to localhost (`127.0.0.1`),
+  mitigating LAN/WAN exposure over the container's shared host networking.
 
 ### `kalicli`: the safer container, and what it actually buys you
 

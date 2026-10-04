@@ -42,21 +42,19 @@ _spinofin_kalicli_check() {
 kalicli() {
     _spinofin_kalicli_check || return 1
 
-    # Allocate a TTY only when stdout is really one, so redirected/piped output
-    # (kalicli sqlmap ... > out.txt) isn't corrupted with CR/escape codes.
-    _kc_tty=""
-    if [ -t 1 ]; then
-        _kc_tty="-t"
+    # Allocate a TTY only when both stdin and stdout are real terminals, so redirected/piped output
+    # or piped input (e.g. cat targets.txt | kalicli tool) does not fail with "input device is not a TTY".
+    _kc_flags=("-i")
+    if [ -t 0 ] && [ -t 1 ]; then
+        _kc_flags+=("-t")
     fi
 
     if [ "$#" -eq 0 ]; then
-        # shellcheck disable=SC2086
-        podman exec -i ${_kc_tty} spinofin-kalicli /bin/bash -l
+        podman exec "${_kc_flags[@]}" spinofin-kalicli /bin/bash -l
     else
-        # shellcheck disable=SC2086
-        podman exec -i ${_kc_tty} spinofin-kalicli "$@"
+        podman exec "${_kc_flags[@]}" spinofin-kalicli "$@"
     fi
-    unset _kc_tty
+    unset _kc_flags
 }
 
 # iskalicli -- presence check. Exit-code contract mirrors `iskali`:

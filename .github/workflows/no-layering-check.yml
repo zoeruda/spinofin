@@ -21,11 +21,13 @@ jobs:
         run: |
           set -euo pipefail
           echo "Scanning build/*.sh and Containerfile for forbidden package-manager install calls..."
-          pattern='\b(dnf5?|yum|apt(-get)?|rpm-ostree)[[:space:]]+install\b'
+          pattern='\b(dnf5?|yum|apt(-get)?|rpm-ostree)([[:space:]]+-[a-zA-Z0-9_-]+|[[:space:]]+--[a-zA-Z0-9_=-]+)*[[:space:]]+install\b|\bcopr_install_isolated\b'
           violations=0
 
           for f in build/*.sh Containerfile; do
             [ -f "$f" ] || continue
+            # build/copr-helpers.sh defines the isolated helper for template completeness; skip the definition itself
+            [ "$f" = "build/copr-helpers.sh" ] && continue
             # grep -n gives "lineno:content"; drop matches where the line is a comment
             matches=$(grep -nE "$pattern" "$f" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
             if [ -n "$matches" ]; then

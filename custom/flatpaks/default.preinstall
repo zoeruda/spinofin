@@ -122,10 +122,9 @@ Branch=stable
 
 ### --- spinofin additions (not already covered by Bluefin defaults above) ---
 
-# Protocol analyzer. Flathub build opens existing pcaps only -- no live capture
-# (that needs privileged dumpcap; run wireshark inside the Kali container).
-[Flatpak Preinstall org.wireshark.Wireshark]
-Branch=stable
+# Note: Wireshark is provided via spinofin-kali (ujust setup-wireshark) with
+# full live packet capture (CAP_NET_RAW) and exported to host desktop, rather
+# than the sandboxed Flathub build which cannot do live capture.
 
 # Burp Suite Community -- community-maintained Flathub wrapper of the
 # proprietary Burp build (not affiliated with PortSwigger). ~700 MiB.
