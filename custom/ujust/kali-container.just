@@ -51,6 +51,7 @@ super-kali:
         setup-bloodhound
         setup-powerview
         setup-kerbrute
+        setup-wireshark
         export-impacket
         link-wordlists
     )
@@ -158,6 +159,7 @@ setup-kali:
     echo "  ujust setup-bloodhound   # install + provision BloodHound CE"
     echo "  ujust setup-powerview    # install powerview.py via container-local pipx"
     echo "  ujust setup-kerbrute     # install kerbrute via container-local go install"
+    echo "  ujust setup-wireshark    # export Wireshark GUI (live capture) & tshark to host"
     echo "  ujust export-impacket    # surface impacket-* scripts to your host shell"
     echo "  ujust link-wordlists     # stage real wordlist files for host-native tools"
     echo "  ujust enter-kali         # drop into the container directly"
@@ -259,6 +261,7 @@ rebuild-kali:
     echo "  ujust setup-bloodhound   # re-install + provision BloodHound CE"
     echo "  ujust setup-powerview    # re-install powerview.py via container-local pipx"
     echo "  ujust setup-kerbrute     # re-install kerbrute via container-local go install"
+    echo "  ujust setup-wireshark    # re-export Wireshark GUI (live capture) & tshark to host"
     echo "  ujust export-impacket    # re-surface impacket-* scripts to your host shell"
 
 # Upgrade the Kali container's apt tooling in place (non-destructive; keeps your data)
@@ -358,6 +361,7 @@ kali-status:
         echo "ROCKYOU_STAGED=$([ -f "$HOME/.local/share/spinofin/wordlists/rockyou.txt" ] && echo yes || echo no)"
         echo "POWERVIEW_BIN=$([ -x /usr/local/bin/powerview ] && echo yes || echo no)"
         echo "KERBRUTE_BIN=$([ -x /usr/local/bin/kerbrute ] && echo yes || echo no)"
+        echo "WIRESHARK_PKG=$(pkg wireshark)"
         login_path="$(getent passwd "$(id -un)" | cut -d: -f7)"
         echo "LOGIN_SHELL=$(basename "${login_path:-unknown}")"
     ')"
@@ -369,6 +373,7 @@ kali-status:
     rockyou_staged="no"
     powerview_bin="no"
     kerbrute_bin="no"
+    wireshark_pkg="no"
     login_shell="unknown"
     while IFS='=' read -r key val; do
         case "${key}" in
@@ -380,6 +385,7 @@ kali-status:
             ROCKYOU_STAGED) rockyou_staged="${val}" ;;
             POWERVIEW_BIN) powerview_bin="${val}" ;;
             KERBRUTE_BIN) kerbrute_bin="${val}" ;;
+            WIRESHARK_PKG) wireshark_pkg="${val}" ;;
             LOGIN_SHELL) login_shell="${val}" ;;
         esac
     done <<<"${report}"
@@ -445,6 +451,16 @@ kali-status:
         echo "[ ] kerbrute    -- not set up (ujust setup-kerbrute)"
     fi
 
+    if [ "${wireshark_pkg}" = "yes" ]; then
+        if [ -f "${HOME}/.local/share/applications/spinofin-kali-org.wireshark.Wireshark.desktop" ] || [ -f "${HOME}/.local/share/applications/spinofin-kali-wireshark.desktop" ] || command -v wireshark >/dev/null 2>&1; then
+            echo "[✓] Wireshark   -- installed, exported to host (live capture enabled)"
+        else
+            echo "[~] Wireshark   -- installed in container (not exported to host)"
+        fi
+    else
+        echo "[ ] Wireshark   -- not set up (ujust setup-wireshark)"
+    fi
+
     echo ""
     echo "Run 'ujust super-kali' to set up or fix anything above not marked [✓]."
 
@@ -499,8 +515,15 @@ setup-metasploit:
     # - This recipe only needs to run ONCE. `msfdb init` is the one command
     #   here that touches the database schema, and it's kept OUT of any
     #   reboot-time path on purpose -- there's no "rerun this after every
-    #   reboot" step left for it to accidentally wipe a case's data with.
-    distrobox enter --root {{ kali_box }} -- bash -lc 'sudo systemctl enable --now postgresql; sudo msfdb init'
+    # - Hardening: configure postgresql to listen strictly on localhost (127.0.0.1)
+    #   so the container's shared host networking does not expose the database port.
+    distrobox enter --root {{ kali_box }} -- sudo bash -lc '
+        if ls /etc/postgresql/*/main/postgresql.conf >/dev/null 2>&1; then
+            sed -i -E "s/^[#[:space:]]*listen_addresses[[:space:]]*=.*/listen_addresses = '\''localhost'\''/" /etc/postgresql/*/main/postgresql.conf
+        fi
+        systemctl enable --now postgresql
+        msfdb init
+    '
     echo ""
     echo "Exporting msfconsole and msfvenom to the host..."
     # Exported HERE rather than declaratively in the manifest: that way they
@@ -582,7 +605,35 @@ setup-bloodhound:
     # setup completes cleanly; you open the neo4j page in your HOST browser
     # instead (instructions printed below). Real (non-browser) failures still
     # surface, since we only neutralize the browser step.
-    distrobox enter --root {{ kali_box }} -- sudo bash -lc 'set -e; dpkg -s bloodhound >/dev/null 2>&1 || { apt-get update; DEBIAN_FRONTEND=noninteractive apt-get install -y bloodhound; }; shim=/tmp/spinofin-nobrowser; mkdir -p "$shim"; for b in xdg-open sensible-browser x-www-browser www-browser gnome-www-browser firefox; do printf "#!/bin/sh\nexit 0\n" > "$shim/$b"; chmod +x "$shim/$b"; done; PATH="$shim:$PATH" BROWSER=true bloodhound-setup'
+    distrobox enter --root {{ kali_box }} -- sudo bash -lc '
+        set -e
+        dpkg -s bloodhound >/dev/null 2>&1 || {
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y bloodhound
+        }
+        # Harden Neo4j & PostgreSQL to bind exclusively to localhost before initial setup
+        if [ -f /etc/neo4j/neo4j.conf ]; then
+            sed -i -E "s/^[#[:space:]]*(server\.default_listen_address|dbms\.default_listen_address)[[:space:]]*=.*/\1=127.0.0.1/" /etc/neo4j/neo4j.conf
+            sed -i -E "s/^[#[:space:]]*(server\.(bolt|http)\.listen_address)[[:space:]]*=[^:]+:(.*)/\1=127.0.0.1:\3/" /etc/neo4j/neo4j.conf
+            sed -i -E "s/^[#[:space:]]*(dbms\.connector\.(bolt|http)\.listen_address)[[:space:]]*=[^:]+:(.*)/\1=127.0.0.1:\3/" /etc/neo4j/neo4j.conf
+            if ! grep -qE "^(server|dbms)\.default_listen_address=127\.0\.0\.1" /etc/neo4j/neo4j.conf; then
+                echo "server.default_listen_address=127.0.0.1" >> /etc/neo4j/neo4j.conf
+            fi
+        fi
+        if ls /etc/postgresql/*/main/postgresql.conf >/dev/null 2>&1; then
+            sed -i -E "s/^[#[:space:]]*listen_addresses[[:space:]]*=.*/listen_addresses = '\''localhost'\''/" /etc/postgresql/*/main/postgresql.conf
+        fi
+        shim=/tmp/spinofin-nobrowser
+        mkdir -p "$shim"
+        for b in xdg-open sensible-browser x-www-browser www-browser gnome-www-browser firefox; do
+            printf "#!/bin/sh\nexit 0\n" > "$shim/$b"
+            chmod +x "$shim/$b"
+        done
+        PATH="$shim:$PATH" BROWSER=true bloodhound-setup
+        if [ -f /etc/bhapi/bhapi.json ]; then
+            sed -i -E "s/\"(host|bind_address)\"[[:space:]]*:[[:space:]]*\"0\.0\.0\.0\"/\"\1\": \"127.0.0.1\"/" /etc/bhapi/bhapi.json
+        fi
+    '
     # Stamp only on success (the `set -e` block above already aborted the
     # recipe on any real failure, so reaching this line means bloodhound-setup
     # actually completed) -- an interrupted/failed run leaves no stamp, so the
@@ -590,7 +641,8 @@ setup-bloodhound:
     # than reporting "already provisioned" for a half-done state.
     distrobox enter --root {{ kali_box }} -- sudo bash -lc "mkdir -p /etc/bhapi && touch '${stamp}'"
     echo ""
-    echo "Done -- BloodHound databases are provisioned. Now, from your HOST browser:"
+    echo "Done -- BloodHound databases are provisioned (bound to localhost)."
+    echo "Now, from your HOST browser:"
     echo "  1. Open http://localhost:7474 (neo4j), log in neo4j / neo4j, set a new password."
     echo "  2. Put that password into the container config:"
     echo "       distrobox enter --root {{ kali_box }} -- sudo nano /etc/bhapi/bhapi.json"
@@ -649,6 +701,21 @@ bloodhound-start:
         if ! command -v bloodhound-setup >/dev/null 2>&1; then
             echo "ERROR: BloodHound is not installed yet. Run: ujust setup-bloodhound" >&2
             exit 1
+        fi
+        # Ensure Neo4j & PostgreSQL stay bound to localhost only
+        if [ -f /etc/neo4j/neo4j.conf ]; then
+            sed -i -E "s/^[#[:space:]]*(server\.default_listen_address|dbms\.default_listen_address)[[:space:]]*=.*/\1=127.0.0.1/" /etc/neo4j/neo4j.conf
+            sed -i -E "s/^[#[:space:]]*(server\.(bolt|http)\.listen_address)[[:space:]]*=[^:]+:(.*)/\1=127.0.0.1:\3/" /etc/neo4j/neo4j.conf
+            sed -i -E "s/^[#[:space:]]*(dbms\.connector\.(bolt|http)\.listen_address)[[:space:]]*=[^:]+:(.*)/\1=127.0.0.1:\3/" /etc/neo4j/neo4j.conf
+            if ! grep -qE "^(server|dbms)\.default_listen_address=127\.0\.0\.1" /etc/neo4j/neo4j.conf; then
+                echo "server.default_listen_address=127.0.0.1" >> /etc/neo4j/neo4j.conf
+            fi
+        fi
+        if ls /etc/postgresql/*/main/postgresql.conf >/dev/null 2>&1; then
+            sed -i -E "s/^[#[:space:]]*listen_addresses[[:space:]]*=.*/listen_addresses = '\''localhost'\''/" /etc/postgresql/*/main/postgresql.conf
+        fi
+        if [ -f /etc/bhapi/bhapi.json ]; then
+            sed -i -E "s/\"(host|bind_address)\"[[:space:]]*:[[:space:]]*\"0\.0\.0\.0\"/\"\1\": \"127.0.0.1\"/" /etc/bhapi/bhapi.json
         fi
         shim=/tmp/spinofin-nobrowser
         mkdir -p "$shim"
@@ -801,15 +868,19 @@ link-wordlists:
     # Re-establish ~/wordlists on every run, not just when missing: this
     # heals a deleted symlink (the reported bug -- `rm ~/wordlists` on the
     # host), a symlink pointing somewhere stale, AND the case where something
-    # replaced it with a real directory instead of a symlink -- a bare
-    # `ln -sfn` would silently nest INTO a real directory rather than replace
-    # it (a well-known ln gotcha: -n only protects a symlink-to-directory
-    # target, not an actual one), so we explicitly clear anything in the way
-    # first rather than relying on -n alone.
+    # replaced it with a real directory or file instead of a symlink.
+    # If a real directory or file exists at $HOME/wordlists, we back it up with
+    # a timestamp instead of destroying it with rm -rf.
     if [ -L "$HOME/wordlists" ] && [ "$(readlink "$HOME/wordlists")" = "$HOME/.local/share/spinofin/wordlists" ]; then
         : # already correct
     else
-        rm -rf "$HOME/wordlists"
+        if [ -e "$HOME/wordlists" ] && [ ! -L "$HOME/wordlists" ]; then
+            backup="$HOME/wordlists.backup.$(date +%Y%m%d%H%M%S)"
+            echo "Existing non-symlink found at $HOME/wordlists; backing up to $backup..."
+            mv "$HOME/wordlists" "$backup"
+        else
+            rm -f "$HOME/wordlists"
+        fi
         ln -s "$HOME/.local/share/spinofin/wordlists" "$HOME/wordlists"
     fi
     echo ""
@@ -1025,6 +1096,52 @@ setup-kerbrute:
     echo "  kerbrute --help        # from your host shell directly"
     echo "  kali kerbrute --help   # equivalent, using the kali alias"
     echo "  ujust enter-kali       # then: kerbrute --help"
+
+# Configure Wireshark permissions and export Wireshark GUI + tshark to host
+[group('Kali')]
+setup-wireshark:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! distrobox list --root 2>/dev/null | grep -q "{{ kali_box }}"; then
+        echo "ERROR: container '{{ kali_box }}' not found." >&2
+        echo "Run 'ujust setup-kali' first to provision it." >&2
+        exit 1
+    fi
+    echo "Configuring Wireshark packet capture permissions inside '{{ kali_box }}'..."
+    distrobox enter --root {{ kali_box }} -- bash -lc '
+        set -euo pipefail
+        if ! dpkg -s wireshark >/dev/null 2>&1 || ! dpkg -s tshark >/dev/null 2>&1; then
+            echo "Installing missing container packages: wireshark, tshark..."
+            sudo apt-get update -qq
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y wireshark tshark
+        fi
+        echo "wireshark-common wireshark-common/install-setuid boolean true" | sudo debconf-set-selections
+        sudo DEBIAN_FRONTEND=noninteractive dpkg-reconfigure wireshark-common
+        sudo usermod -aG wireshark "$USER"
+        if [ -f /usr/bin/dumpcap ]; then
+            sudo chgrp wireshark /usr/bin/dumpcap 2>/dev/null || true
+            sudo chmod 4750 /usr/bin/dumpcap 2>/dev/null || true
+        fi
+        if [ -f /usr/share/applications/org.wireshark.Wireshark.desktop ]; then
+            distrobox-export --app org.wireshark.Wireshark >/dev/null 2>&1 || true
+        fi
+        if [ -f /usr/share/applications/wireshark.desktop ]; then
+            distrobox-export --app wireshark >/dev/null 2>&1 || true
+        fi
+        distrobox-export --bin /usr/bin/wireshark --export-path "$HOME/.local/bin" >/dev/null 2>&1 || true
+        distrobox-export --bin /usr/bin/tshark --export-path "$HOME/.local/bin" >/dev/null 2>&1 || true
+    '
+    # If the old sandboxed Flatpak is installed, remove it to avoid launcher collision in GNOME
+    if command -v flatpak >/dev/null 2>&1 && flatpak info org.wireshark.Wireshark >/dev/null 2>&1; then
+        echo "Removing legacy sandboxed Flatpak Wireshark to prevent desktop launcher collision..."
+        flatpak uninstall -y --noninteractive org.wireshark.Wireshark >/dev/null 2>&1 || true
+    fi
+    echo ""
+    echo "Done. Wireshark is now available in your desktop application menu with"
+    echo "full live packet capture capabilities, and CLI wrappers are exported to your host:"
+    echo "  wireshark        # desktop launcher or host terminal"
+    echo "  tshark -i any    # live CLI capture from host shell"
+    echo "  kali wireshark   # via kali helper alias"
 
 # Remove the Kali toolbox container entirely
 [group('Kali')]

@@ -55,8 +55,21 @@ jobs:
               fail=1
             fi
 
-            echo "::endgroup::"
           done
+
+          mapfile -t fish_files < <(find custom/aliases -type f -name '*.fish' | sort)
+          if [ ${#fish_files[@]} -gt 0 ] && command -v fish >/dev/null 2>&1; then
+            for f in "${fish_files[@]}"; do
+              echo "::group::$f"
+              if fish --no-execute "$f"; then
+                echo "  ok    fish --no-execute (parses)"
+              else
+                echo "  FAIL  fish syntax error in $f"
+                fail=1
+              fi
+              echo "::endgroup::"
+            done
+          fi
 
           if [ "$fail" -ne 0 ]; then
             echo ""

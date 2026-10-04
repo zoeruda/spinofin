@@ -7,35 +7,46 @@ step, no `ujust` recipe to run: present as soon as you boot the image.
 
 ## No-layering posture
 
-Nothing here installs a package. It is a single file drop into
-`/etc/profile.d/`, which Fedora's `/etc/bashrc` sources for both login and
-interactive non-login bash shells (e.g. a fresh GNOME Terminal tab) -- the
-standard Fedora/RHEL convention. So this does not trip the
-`no-layering-check.yml` guard (it only greps for package-manager install
-calls) and there is nothing to unwind at the eventual Track-B (GNOME OS
-bootc) migration.
+Nothing here installs a package. Files are dropped into `/etc/profile.d/` and
+`/etc/fish/conf.d/`, standard Fedora/RHEL drop-in directories copied verbatim
+into the image root at build time. This does not trip the `no-layering-check.yml`
+guard (it only greps for package-manager install calls) and there is nothing to
+unwind at the eventual Track-B (GNOME OS bootc) migration.
 
-**Scope note:** this targets `bash` (Bluefin's default interactive shell).
-zsh does not read `/etc/profile.d` by default, so zsh users will need to
-source `/etc/profile.d/spinofin-kali-aliases.sh` from their own `~/.zshrc` if
-they've switched shells.
+### Multi-Shell Support (Bash, Zsh, Fish)
+
+- **Bash & Zsh**: Sourced via `/etc/profile.d/spinofin-kali-aliases.sh` and
+  `/etc/profile.d/spinofin-kalicli-aliases.sh`. Fedora's `/etc/bashrc` and
+  `/etc/zshrc` automatically source all `/etc/profile.d/*.sh` files for login
+  and interactive non-login shells. Functions are written using POSIX/Zsh-compatible
+  flag arrays and TTY detection (`[ -t 0 ] && [ -t 1 ]`) so piped I/O works seamlessly.
+- **Fish**: Sourced via `/etc/fish/conf.d/spinofin-kali-aliases.fish` and
+  `/etc/fish/conf.d/spinofin-kalicli-aliases.fish`. Fish automatically
+  loads scripts in `/etc/fish/conf.d/` on launch. Native Fish functions provide identical
+  behavior and CLI flags.
 
 ## What's provided
 
-`system_files/etc/profile.d/spinofin-kali-aliases.sh` defines two shell
-functions for running a command in the shared `spinofin-kali` container
-without typing the full `distrobox enter --root spinofin-kali -- ...` --
-the same `distrobox enter` pattern already used throughout
-`custom/ujust/kali-container.just`:
+### `spinofin-kali` helpers (distrobox)
 
-- `kali <cmd>` — run `<cmd>` in the container as your user. No args drops
-  you into an interactive shell (same as `ujust enter-kali`).
-- `kalisudo <cmd>` — same, but as root in the container.
+- `kali <cmd>` — run `<cmd>` in the `spinofin-kali` container as your user.
+  No args drops you into an interactive login shell (same as `ujust enter-kali`).
+- `kalisudo <cmd>` — same, but as root in the container (`distrobox enter --root spinofin-kali -- sudo ...`).
+- `iskali` — report whether `spinofin-kali` exists (exit 0 = present, non-zero = not created).
 
-Both error harmlessly toward `ujust setup-kali` if the container hasn't been
-created yet, rather than letting `distrobox enter` fall through to its
-default behavior: offering to create a new container under that same name
-using the *host's* default image (Fedora) instead of Kali.
+Both `kali` and `kalisudo` error harmlessly toward `ujust setup-kali` if the container
+hasn't been created yet, rather than letting `distrobox enter` fall through to its
+default behavior (prompting to create a host-default Fedora box).
+
+### `kalicli` helpers (rootless Quadlet)
+
+- `kalicli <cmd>` — run `<cmd>` in the rootless `spinofin-kalicli` container.
+  No args drops you into an interactive login shell. Automatically starts the
+  `spinofin-kalicli.service` on demand if stopped.
+- `iskalicli` — report whether `kalicli` is built and running (exit 0 = present, 1 = not set up, 2 = no podman).
+
+There is deliberately no `kaliclisudo`: `kalicli` is rootless (container UID 0 is mapped
+to host UID), so you are already root inside the container with no host privileges.
 
 ## Layout
 
@@ -43,8 +54,13 @@ using the *host's* default image (Fedora) instead of Kali.
 custom/aliases/
 └── system_files/
     └── etc/
+        ├── fish/
+        │   └── conf.d/
+        │       ├── spinofin-kali-aliases.fish      # Fish distrobox helpers
+        │       └── spinofin-kalicli-aliases.fish   # Fish Quadlet helpers
         └── profile.d/
-            └── spinofin-kali-aliases.sh   # copied verbatim to /etc/profile.d/
+            ├── spinofin-kali-aliases.sh        # Bash/Zsh distrobox helpers
+            └── spinofin-kalicli-aliases.sh     # Bash/Zsh Quadlet helpers
 ```
 
 Wired into the image by `build/17-aliases.sh`, a straight `cp -a` copy --
