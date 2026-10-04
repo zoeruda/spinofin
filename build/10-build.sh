@@ -88,6 +88,22 @@ cp /ctx/custom/distrobox/*.ini /usr/share/spinofin/distrobox/
 mkdir -p /usr/share/spinofin/pipx/
 cp /ctx/custom/pipx/*.pipx /usr/share/spinofin/pipx/
 
+# Copy the kalicli Containerfile (the rootless CLI container's tool set) as
+# DATA. It is NOT built here -- `ujust setup-kalicli` runs `podman build`
+# against it at runtime to produce a container-local localhost/spinofin-kalicli image.
+# A file copy only; nothing is layered into the host image, so the no-layering
+# policy is untouched.
+mkdir -p /usr/share/spinofin/quadlet/
+cp /ctx/custom/quadlet/Containerfile /usr/share/spinofin/quadlet/
+
+# Install the kalicli Quadlet as a rootless user unit. Same pattern as the
+# profile.d aliases and the sudoers drop-in: a config file baked into the
+# image. /etc/containers/systemd/users/ is a rootless Quadlet search path, so
+# systemd generates spinofin-kalicli.service from it for each user. No auto-start (the
+# unit has no [Install]); `ujust setup-kalicli` / the `kalicli` alias start it.
+mkdir -p /etc/containers/systemd/users/
+cp /ctx/custom/quadlet/spinofin-kalicli.container /etc/containers/systemd/users/
+
 echo "::endgroup::"
 
 echo "::group:: Install Packages"

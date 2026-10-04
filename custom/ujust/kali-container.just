@@ -200,6 +200,16 @@ rebuild-kali:
         echo "Nothing to rebuild -- run 'ujust setup-kali' to create it first." >&2
         exit 1
     fi
+    echo "This replaces '{{ kali_box }}' from {{ kali_ini }}. --replace wipes"
+    echo "everything not baked into the manifest, so container-side setup is lost"
+    echo "(Metasploit DB, BloodHound, powerview, kerbrute, impacket exports)."
+    echo "Your home directory is shared with the host, so files there are untouched."
+    echo ""
+    read -rp "Rebuild '{{ kali_box }}' from scratch? [y/N] " reply
+    case "${reply}" in
+        [yY]|[yY][eE][sS]) ;;
+        *) echo "Aborted."; exit 0 ;;
+    esac
     echo "Replacing '{{ kali_box }}' from {{ kali_ini }} ..."
     # Same intermittent failure point as setup-kali (the container's init runs
     # apt after "distrobox: Installing basic packages..."). We let distrobox
@@ -274,9 +284,9 @@ upgrade-kali:
     # clean-slate container.
     #
     # Covers every apt-managed tool in one pass: the manifest's additional_packages
-    # (metasploit-framework, netexec, sqlmap, impacket-scripts, ...) AND any
+    # (metasploit-framework, impacket-scripts, nmap, tcpdump, ...) AND any
     # `ujust install-kali-<family>` metapackages, since those are all apt packages
-    # in this same container. Runs as root via distrobox's passwordless sudo, with
+    # in this same container. Runs as root inside the rootful container, with
     # DEBIAN_FRONTEND=noninteractive so a package's post-install prompt (e.g.
     # wireshark's "allow non-root capture?") takes its default instead of hanging.
     #
@@ -485,8 +495,7 @@ setup-metasploit:
     #   exits otherwise). It writes a SYSTEM-WIDE config to
     #   /usr/share/metasploit-framework/config/database.yml, so the exported
     #   msfconsole -- which runs as your user -- reads the same config and
-    #   connects to the same database. distrobox provides passwordless sudo
-    #   inside the container.
+    #   connects to the same database.
     # - This recipe only needs to run ONCE. `msfdb init` is the one command
     #   here that touches the database schema, and it's kept OUT of any
     #   reboot-time path on purpose -- there's no "rerun this after every
@@ -708,7 +717,7 @@ link-wordlists:
     # hashcat, ffuf, ...). Two gotchas: (1) distrobox shares only $HOME -- not
     # the container's /usr -- so files must land under $HOME; and (2)
     # /usr/share/wordlists is mostly SYMLINKS into other packages' dirs (dirb,
-    # wfuzz, metasploit, ...), many of them DANGLING, which are useless on the
+    # metasploit, ...), many of them DANGLING, which are useless on the
     # host. So we stage REAL files only: relocate the seclists tree (its password
     # lists are real files) into $HOME and symlink /usr/share/seclists back, and
     # decompress rockyou into a ready-to-use plaintext list. We do NOT mirror the

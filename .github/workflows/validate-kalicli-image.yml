@@ -1,0 +1,57 @@
+name: Validate kalicli image
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "custom/quadlet/**"
+      - ".github/workflows/validate-kalicli-image.yml"
+
+# Unlike the distrobox container (whose packages are validated by name with
+# apt-cache in validate-kali-packages.yml), kalicli is a real image built from
+# custom/quadlet/Containerfile. So we validate it the strongest way available:
+# actually build it. That catches wrong/renamed/conflicting package names by
+# failing the install, not just a missing-name check. We also dry-run the
+# Quadlet generator against spinofin-kalicli.container so a bad unit key fails CI too.
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Ensure podman is available
+        run: |
+          set -euo pipefail
+          if ! command -v podman >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends podman
+          fi
+          podman --version
+
+      - name: Build the kalicli image from its Containerfile
+        run: |
+          set -euo pipefail
+          podman build --pull=always -t localhost/spinofin-kalicli:ci \
+            -f custom/quadlet/Containerfile custom/quadlet
+
+      - name: Dry-run the Quadlet generator against spinofin-kalicli.container
+        run: |
+          set -euo pipefail
+          gen="$(command -v podman-system-generator || true)"
+          for c in /usr/lib/systemd/system-generators/podman-system-generator \
+                   /usr/libexec/podman/quadlet; do
+            [ -z "$gen" ] && [ -x "$c" ] && gen="$c"
+          done
+          if [ -z "$gen" ]; then
+            echo "Quadlet generator not found on this runner -- skipping unit dry-run." >&2
+            exit 0
+          fi
+          workdir="$(mktemp -d)"
+          cp custom/quadlet/spinofin-kalicli.container "${workdir}/"
+          out="$(mktemp -d)"
+          # --dryrun prints generated units and errors on invalid keys.
+          QUADLET_UNIT_DIRS="${workdir}" "$gen" --user --dryrun "${out}"
+          echo "Quadlet unit generated without error."

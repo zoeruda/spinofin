@@ -1,0 +1,36 @@
+# custom/quadlet/spinofin-kalicli.container
+#
+# Declarative RUNTIME definition of the kalicli container -- the podman-native
+# equivalent of the distrobox .ini. This ships INSIDE the spinofin image at
+# /etc/containers/systemd/users/ (a rootless Quadlet search path), exactly the
+# way the shell aliases and the sudoers drop-in are baked in. systemd's Quadlet
+# generator turns it into a `spinofin-kalicli.service` you manage with `systemctl --user`.
+#
+# Rootless + minimal sharing by design: the ONLY host path exposed is
+# ~/spinofin/work (as /work). No $HOME mount, no /run/host, no exported binaries.
+# See SECURITY.md for the full comparison with spinofin-kali.
+
+[Unit]
+Description=spinofin kalicli (rootless CLI toolbox)
+
+[Container]
+ContainerName=spinofin-kalicli
+# Built locally by `ujust setup-kalicli` from custom/quadlet/Containerfile.
+Image=localhost/spinofin-kalicli:latest
+# Keep the container alive so the `kalicli` alias can `podman exec` into it.
+Exec=sleep infinity
+HostName=spinofin-kalicli
+# %h is a systemd specifier -> the user's home. :Z relabels for SELinux
+# (Bluefin is enforcing); without it the container gets EACCES on /work.
+Volume=%h/spinofin/work:/work:Z
+WorkingDir=/work
+Timezone=local
+
+[Service]
+Restart=on-failure
+
+# No [Install] section on purpose: kalicli does NOT auto-start at login. Even
+# though this unit ships for every user, it stays inactive until explicitly
+# started (and would no-op-fail without the locally built image). `ujust
+# setup-kalicli` and the `kalicli` alias start it on demand via
+# `systemctl --user start spinofin-kalicli`, matching how the distrobox container behaves.
