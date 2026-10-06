@@ -863,7 +863,8 @@ link-wordlists:
         else
             echo "WARN: rockyou not found under /usr/share/wordlists" >&2
         fi
-        chmod -R u=rwX,go=rX "$dest" 2>/dev/null || true
+        chmod -R u=rwX,go-w "$dest" 2>/dev/null || true
+        chmod 0700 "$dest" 2>/dev/null || true
         echo "Staged real files in $dest"
     '
     # Re-establish ~/wordlists on every run, not just when missing: this
@@ -886,6 +887,7 @@ link-wordlists:
         fi
         ln -s "$HOME/.local/share/spinofin/wordlists" "$HOME/wordlists"
     fi
+    chmod 0700 "$HOME/.local/share/spinofin/wordlists" 2>/dev/null || true
     echo ""
     echo "Done. Real, host-usable wordlists for john / hashcat:"
     echo "  ~/wordlists/rockyou.txt"

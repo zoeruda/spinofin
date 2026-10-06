@@ -71,6 +71,7 @@ setup-kalicli:
     # Prepare shared host paths: work directory and staged wordlists mount point.
     mkdir -p "${HOME}/{{ kalicli_workdir }}"
     mkdir -m 0700 -p "${HOME}/.local/share/spinofin/wordlists"
+    chmod 0700 "${HOME}/.local/share/spinofin/wordlists"
 
     echo "Building '{{ kalicli_image }}' from its Containerfile (pulls kali-rolling"
     echo "and installs the declared tools; takes a while on first run) ..."
