@@ -819,7 +819,7 @@ link-wordlists:
     distrobox enter --root {{ kali_box }} -- bash -lc '
         set -euo pipefail
         dest="$HOME/.local/share/spinofin/wordlists"
-        mkdir -p "$dest"
+        mkdir -m 0700 -p "$dest"
 
         # seclists: $dest/seclists is the SOURCE OF TRUTH (a real, host-shared
         # copy) -- /usr/share/seclists is only ever a symlink pointing back at
@@ -863,6 +863,7 @@ link-wordlists:
         else
             echo "WARN: rockyou not found under /usr/share/wordlists" >&2
         fi
+        chmod -R u=rwX,go=rX "$dest" 2>/dev/null || true
         echo "Staged real files in $dest"
     '
     # Re-establish ~/wordlists on every run, not just when missing: this
@@ -874,12 +875,14 @@ link-wordlists:
     if [ -L "$HOME/wordlists" ] && [ "$(readlink "$HOME/wordlists")" = "$HOME/.local/share/spinofin/wordlists" ]; then
         : # already correct
     else
-        if [ -e "$HOME/wordlists" ] && [ ! -L "$HOME/wordlists" ]; then
+        if [ -L "$HOME/wordlists" ]; then
+            old_target="$(readlink "$HOME/wordlists" || true)"
+            echo "Replacing existing symlink at $HOME/wordlists (was pointing to: ${old_target})..."
+            rm -f "$HOME/wordlists"
+        elif [ -e "$HOME/wordlists" ]; then
             backup="$HOME/wordlists.backup.$(date +%Y%m%d%H%M%S)"
             echo "Existing non-symlink found at $HOME/wordlists; backing up to $backup..."
             mv "$HOME/wordlists" "$backup"
-        else
-            rm -f "$HOME/wordlists"
         fi
         ln -s "$HOME/.local/share/spinofin/wordlists" "$HOME/wordlists"
     fi

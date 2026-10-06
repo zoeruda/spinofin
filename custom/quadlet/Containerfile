@@ -25,9 +25,10 @@
 # deliberately narrow: CLI tools that speak TCP/HTTP and need neither raw
 # sockets (CAP_NET_RAW: nmap SYN scans, tcpdump) nor a systemd service
 # (msfdb, BloodHound/neo4j). Those live in the spinofin-kali distrobox instead.
-# Wordlists (seclists) are intentionally omitted to keep the image cheap to
-# rebuild; use ~/spinofin/work or the spinofin-kali box. Trusted host-native
-# tools (ffuf, gobuster, nikto, sslscan, hydra, john) are NOT duplicated here --
+# Wordlists (seclists) are not baked into the image to keep rebuilds fast;
+# instead, the staged host wordlists (~/.local/share/spinofin/wordlists) are mounted
+# read-only at /wordlists, with /usr/share/wordlists and /usr/share/seclists symlinked to it.
+# Trusted host-native tools (ffuf, gobuster, nikto, sslscan, hydra, john) are NOT duplicated here --
 # they come from Homebrew on the host; kalicli carries only the connect-based
 # tooling brew doesn't ship. impacket-scripts is also in the distrobox (which
 # exports it to the host); it's kept here too for in-sandbox AD work.
@@ -42,4 +43,8 @@ RUN apt-get update \
       netcat-openbsd socat rlwrap proxychains4 smbclient ldap-utils dnsutils \
       impacket-scripts netexec enum4linux-ng evil-winrm \
  && apt-get clean \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /wordlists \
+ && rm -rf /usr/share/wordlists /usr/share/seclists \
+ && ln -sfn /wordlists /usr/share/wordlists \
+ && ln -sfn /wordlists/seclists /usr/share/seclists

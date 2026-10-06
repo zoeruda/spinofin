@@ -27,3 +27,11 @@ jobs:
           shellcheck-glob: "build/*.sh"
           dockerfile: "Containerfile"
           hadolint-config: ".hadolint.yaml"
+
+      - name: ShellCheck auxiliary scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          shellcheck \
+            .github/actions/check-token-health/check_token_health.sh \
+            custom/branding/system_files/usr/libexec/spinofin/branding-migrate-user-logo

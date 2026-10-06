@@ -16,6 +16,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      - name: Install fish shell
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fish
+
       - name: Validate alias shell files
         shell: bash
         run: |
@@ -54,21 +59,26 @@ jobs:
               echo "  FAIL  shellcheck findings in $f"
               fail=1
             fi
-
+            echo "::endgroup::"
           done
 
           mapfile -t fish_files < <(find custom/aliases -type f -name '*.fish' | sort)
-          if [ ${#fish_files[@]} -gt 0 ] && command -v fish >/dev/null 2>&1; then
-            for f in "${fish_files[@]}"; do
-              echo "::group::$f"
-              if fish --no-execute "$f"; then
-                echo "  ok    fish --no-execute (parses)"
-              else
-                echo "  FAIL  fish syntax error in $f"
-                fail=1
-              fi
-              echo "::endgroup::"
-            done
+          if [ ${#fish_files[@]} -gt 0 ]; then
+            if ! command -v fish >/dev/null 2>&1; then
+              echo "::error::fish shell is required to validate .fish files but was not found."
+              fail=1
+            else
+              for f in "${fish_files[@]}"; do
+                echo "::group::$f"
+                if fish --no-execute "$f"; then
+                  echo "  ok    fish --no-execute (parses)"
+                else
+                  echo "  FAIL  fish syntax error in $f"
+                  fail=1
+                fi
+                echo "::endgroup::"
+              done
+            fi
           fi
 
           if [ "$fail" -ne 0 ]; then

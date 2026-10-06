@@ -7,6 +7,7 @@ on:
     paths:
       - "custom/distrobox/**"
       - "custom/ujust/kali-toolsets.just"
+      - "custom/ujust/kali-container.just"
       # Re-run when the validator itself changes, so a workflow edit is
       # exercised against the committed files on its own PR.
       - ".github/workflows/validate-kali-packages.yml"
@@ -103,6 +104,26 @@ jobs:
             echo "  (no $toolsets_file found -- skipping)"
           fi
 
+          echo "Validating on-demand apt packages in kali-container.just ..."
+          container_file="custom/ujust/kali-container.just"
+          if [ -f "$container_file" ]; then
+            echo "::group::$(basename "$container_file")"
+            # Extract apt packages referenced in dpkg -s or apt-get install calls in kali-container.just
+            demand_pkgs=$(grep -E 'dpkg -s|apt-get install' "$container_file" | \
+              grep -oE '\b(bloodhound|metasploit-framework|postgresql|impacket-scripts|seclists|wordlists|pipx|libkrb5-dev|python3-dev|golang-go|wireshark|tshark)\b' | sort -u)
+            for pkg in $demand_pkgs; do
+              if apt-cache show "$pkg" >/dev/null 2>&1; then
+                echo "  ok    $pkg"
+              else
+                echo "  FAIL  $pkg -- on-demand package in kali-container.just not found in Kali apt repositories"
+                fail=1
+              fi
+            done
+            echo "::endgroup::"
+          else
+            echo "  (no $container_file found -- skipping)"
+          fi
+
           if [ "$fail" -ne 0 ]; then
             echo ""
             echo "Kali package validation failed -- see the FAIL lines above."
@@ -113,4 +134,4 @@ jobs:
             exit 1
           fi
           echo ""
-          echo "All additional_packages and kali-tools-* metapackages resolve."
+          echo "All additional_packages, kali-tools-* metapackages, and on-demand packages resolve."

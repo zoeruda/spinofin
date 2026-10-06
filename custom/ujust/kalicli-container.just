@@ -68,9 +68,9 @@ setup-kalicli:
         exit 0
     fi
 
-    # The ONLY host path this container can see. Create it so a fresh install
-    # works without the user preparing anything.
+    # Prepare shared host paths: work directory and staged wordlists mount point.
     mkdir -p "${HOME}/{{ kalicli_workdir }}"
+    mkdir -m 0700 -p "${HOME}/.local/share/spinofin/wordlists"
 
     echo "Building '{{ kalicli_image }}' from its Containerfile (pulls kali-rolling"
     echo "and installs the declared tools; takes a while on first run) ..."
@@ -92,8 +92,9 @@ setup-kalicli:
     echo "  kalicli sqlmap --help   # run a single command"
     echo ""
     echo "Files: put inputs in ~/{{ kalicli_workdir }} (visible as /work inside);"
-    echo "that is the only host path kalicli can reach. Prefer kalicli over the"
-    echo "spinofin-kali box for anything that does not need root or raw sockets."
+    echo "wordlists are mounted read-only at /wordlists (run 'ujust link-wordlists')."
+    echo "Prefer kalicli over the spinofin-kali box for anything that does not need"
+    echo "root or raw sockets."
 
 # Enter an interactive shell in the kalicli container (same as the `kalicli` alias)
 [group('Kali CLI')]
@@ -211,7 +212,9 @@ kalicli-status:
         echo "  base:  $(podman image inspect -f '{{{{index .RepoTags 0}}}}' "{{ kalicli_image }}" 2>/dev/null || true)"
     fi
     echo "Service (spinofin-kalicli.service):  ${unit_state:-inactive}"
+    wordlists_dir="${HOME}/.local/share/spinofin/wordlists"
     echo "Shared dir:  ${workdir}  ->  /work  $([ -d "${workdir}" ] && echo '(exists)' || echo '(will be created on setup)')"
+    echo "Wordlists:   ${wordlists_dir}  ->  /wordlists (ro)  $([ -d "${wordlists_dir}" ] && [ -n "$(ls -A "${wordlists_dir}" 2>/dev/null)" ] && echo '(staged)' || echo '(empty -- run ujust link-wordlists)')"
     echo ""
     echo "Tools are baked into the image from custom/quadlet/Containerfile."
     echo "To change them, edit that file and run 'ujust rebuild-kalicli'."

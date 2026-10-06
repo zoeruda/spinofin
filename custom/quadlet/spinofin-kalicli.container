@@ -23,6 +23,9 @@ HostName=spinofin-kalicli
 # %h is a systemd specifier -> the user's home. :Z relabels for SELinux
 # (Bluefin is enforcing); without it the container gets EACCES on /work.
 Volume=%h/spinofin/work:/work:Z
+# Read-only wordlists share (staged by `ujust link-wordlists`).
+# :z allows shared access without altering existing ownership.
+Volume=%h/.local/share/spinofin/wordlists:/wordlists:ro,z
 WorkingDir=/work
 Timezone=local
 
