@@ -1,78 +1,34 @@
 # Build Scripts
 
-This directory contains build scripts that run during image creation. Scripts are executed in numerical order.
+This directory contains build scripts that execute during the container image build process (`Containerfile`).
 
-## How It Works
+## Architecture & No-Layering Policy
 
-Scripts are named with a number prefix (e.g., `10-build.sh`, `20-onepassword.sh`) and run in ascending order during the container build process.
-
-## Included Scripts
-
-- **`10-build.sh`** - Main build script for base system modifications, package installation, and service configuration
-
-## Example Scripts
-
-- **`20-onepassword.sh.example`** - Example showing how to install software from third-party RPM repositories (Google Chrome, 1Password)
-- **`30-cosmic-desktop.sh.example`** - Example showing how to replace the GNOME desktop with COSMIC desktop
-
-To use an example script:
-1. Remove the `.example` extension
-2. Make it executable: `chmod +x build/20-yourscript.sh`
-3. The build system will automatically run it in numerical order
-
-## Creating Your Own Scripts
-
-Create numbered scripts for different purposes:
-
-```bash
-# 10-build.sh - Base system (already exists)
-# 20-drivers.sh - Hardware drivers
-# 30-development.sh - Development tools
-# 40-gaming.sh - Gaming software
-# 50-cleanup.sh - Final cleanup tasks
-```
-
-### Script Template
-
-```bash
-#!/usr/bin/env bash
-set -oue pipefail
-
-echo "Running custom setup..."
-# Your commands here
-```
-
-### Best Practices
-
-- **Use descriptive names**: `20-nvidia-drivers.sh` is better than `20-stuff.sh`
-- **One purpose per script**: Easier to debug and maintain
-- **Clean up after yourself**: Remove temporary files and disable temporary repos
-- **Test incrementally**: Add one script at a time and test builds
-- **Comment your code**: Future you will thank present you
-
-### Disabling Scripts
-
-To temporarily disable a script without deleting it:
-- Rename it with `.disabled` extension: `20-script.sh.disabled`
-- Or remove execute permission: `chmod -x build/20-script.sh`
+> [!IMPORTANT]
+> **No Build-Time Package Layering:**
+> spinofin strictly forbids package installation via `dnf5`, `dnf`, `yum`, `apt`, or `rpm-ostree` during image builds. Build scripts perform declarative system configuration, asset staging, and service management only. All CLI tools, GUI applications, and penetration testing packages are delivered at runtime via Homebrew (`custom/brew/*.Brewfile`), pipx (`custom/pipx/*.pipx`), Flatpak (`custom/flatpaks/*.preinstall`), and Kali containers (`spinofin-kali` and `kalicli`).
+>
+> Any PR adding package-manager install commands to `build/*.sh` is automatically rejected by `.github/workflows/no-layering-check.yml`.
 
 ## Execution Order
 
-The Containerfile runs scripts like this:
+The `Containerfile` runs scripts in explicit order via bind mounts (`/ctx`):
 
-```dockerfile
-RUN /ctx/build/10-build.sh
-```
+1. **`00-image-info.sh`** — Sets up image identity, versioning, and `/etc/os-release` configuration.
+2. **`10-build.sh`** — Base system modifications, systemd service presets, and kernel argument validation.
+3. **`15-branding.sh`** — Installs distribution branding, wallpapers, and application icons.
+4. **`16-initramfs.sh`** — Regenerates initramfs with custom drivers/configurations.
+5. **`17-aliases.sh`** — Copies system profile scripts (`/etc/profile.d/` and `/etc/fish/conf.d/`) for container aliases.
+6. **`18-sudo-prompt.sh`** — Configures default sudo prompt behavior.
+7. **`clean-stage.sh`** — Purges caches, temporary files, and build context remnants.
 
-If you want to run multiple scripts, you can:
+## Helper Scripts
 
-1. **Modify Containerfile** to run each script explicitly
-2. **Create a runner script** that executes all numbered scripts
-3. **Use the default** and keep everything in `10-build.sh` (simplest)
+- **`copr-helpers.sh`** — Template library for isolated COPR handling (retained for template compatibility; not used in spinofin due to the no-layering policy).
 
-## Notes
+## Best Practices
 
-- Scripts run as root during build
-- Build context is available at `/ctx`
-- Use dnf5 for package management (not dnf or yum)
-- Always use `-y` flag for non-interactive installs
+- **Strict Error Handling**: Always include `set -euo pipefail` at the top of every script.
+- **Idempotent Operations**: Ensure operations succeed even if run repeatedly.
+- **Clean Context**: Clean up any temporary files created in `/tmp` before completing the stage.
+- **ShellCheck Compliance**: Run `just lint` (`shellcheck`) to ensure all scripts adhere to static analysis standards.

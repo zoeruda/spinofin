@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # spinofin: shell alias for the rootless `kalicli` podman container.
 # Baked into the image (see custom/aliases/README.md) -- no setup step needed.
 #
@@ -10,8 +11,8 @@
 # ALREADY root inside the container, and that root has no authority on the host.
 #
 # Unlike `kali`, this does NOT use distrobox: no /run/host, no $HOME mount. The
-# only shared path is ~/spinofin/work, which appears as /work inside. kalicli is
-# a systemd-managed Quadlet service (spinofin-kalicli.service), started on demand here.
+# only shared paths are ~/spinofin/work (at /work) and staged wordlists (at /wordlists, ro).
+# kalicli is a systemd-managed Quadlet service (spinofin-kalicli.service), started on demand here.
 #
 # Plain functions (not `alias`) so multi-word/quoted arguments forward
 # correctly. Uses `return`, never `exit` -- these are sourced into the

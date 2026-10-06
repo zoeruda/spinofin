@@ -49,7 +49,7 @@ cp /ctx/custom/brew/*.Brewfile /usr/share/ublue-os/homebrew/
 # .github/workflows/validate-justfiles.yml, which now builds and validates
 # this exact concatenation (not just the fragments) so a mismatch here is
 # caught in CI instead of only being visible after a real build.
-find /ctx/custom/ujust -iname '*.just' -exec printf "\n" \; -exec cat {} \; >>/usr/share/ublue-os/just/60-custom.just
+find /ctx/custom/ujust -iname '*.just' -exec cat {} \; -exec printf "\n" \; >>/usr/share/ublue-os/just/60-custom.just
 
 # Fail the build if any shipped justfile contains a NUL byte.
 #
@@ -121,9 +121,9 @@ echo "::group:: Install Packages"
 #                                   `ujust install-default-apps` etc.
 #   - custom/flatpaks/*.preinstall GUI apps, installed on first boot
 #
-# The `dnf5 config-manager setopt ...` line in the Containerfile is left
-# in place because it only sets cache options -- it does not install
-# anything, so it doesn't violate this policy.
+# The build avoids running any dnf5 configuration steps in the
+# Containerfile or build scripts to prevent dnf.conf syntax rewriting
+# issues and maintain a package-manager-free posture for Track B.
 # -----------------------------------------------------------------------
 
 echo "::endgroup::"
