@@ -16,10 +16,11 @@ default:
 [group('Just')]
 check:
     #!/usr/bin/bash
-    find . -type f -name "*.just" | while read -r file; do
-    	echo "Checking syntax: $file"
-    	just --unstable --fmt --check -f $file
-    done
+    set -euo pipefail
+    while IFS= read -r file; do
+        echo "Checking syntax: $file"
+        just --unstable --fmt --check -f "$file"
+    done < <(find . -type f -name "*.just" | sort)
     echo "Checking syntax: Justfile"
     just --unstable --fmt --check -f Justfile
 
@@ -27,12 +28,13 @@ check:
 [group('Just')]
 fix:
     #!/usr/bin/bash
-    find . -type f -name "*.just" | while read -r file; do
-    	echo "Checking syntax: $file"
-    	just --unstable --fmt -f $file
-    done
-    echo "Checking syntax: Justfile"
-    just --unstable --fmt -f Justfile || { exit 1; }
+    set -euo pipefail
+    while IFS= read -r file; do
+        echo "Formatting: $file"
+        just --unstable --fmt -f "$file"
+    done < <(find . -type f -name "*.just" | sort)
+    echo "Formatting: Justfile"
+    just --unstable --fmt -f Justfile
 
 # Clean Repo
 [group('Utility')]
@@ -409,14 +411,17 @@ spawn-vm rebuild="0" type="qcow2" ram="6G":
 # Runs shell check on all Bash scripts
 lint:
     #!/usr/bin/env bash
-    set -eoux pipefail
+    set -euo pipefail
+    if [ -d "/home/linuxbrew/.linuxbrew/bin" ]; then
+        export PATH="/home/linuxbrew/.linuxbrew/bin:$PATH"
+    fi
     # Check if shellcheck is installed
     if ! command -v shellcheck &> /dev/null; then
-        echo "shellcheck could not be found. Please install it."
+        echo "shellcheck could not be found. Please install it (e.g. brew install shellcheck)."
         exit 1
     fi
     # Run shellcheck on all Bash scripts
-    /usr/bin/find . -iname "*.sh" -type f -exec shellcheck "{}" ';'
+    /usr/bin/find . -iname "*.sh" -not -path "./.git/*" -type f -exec shellcheck "{}" +
 
 # Runs shfmt on all Bash scripts
 format:

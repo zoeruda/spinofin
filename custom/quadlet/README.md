@@ -29,10 +29,11 @@ the container is not an isolation boundary.
 
 `kalicli` is the opposite trade: rootless (podman maps container UID 0 to your
 own host UID, so `root` inside has no host authority — hence no `kaliclisudo`),
-no `/run/host`, no `$HOME` mount, no exported binaries. The only shared path is
-`~/spinofin/work`, mounted at `/work`. Prefer it for anything that doesn't need
-root or raw sockets, and especially for running untrusted code. See
-[SECURITY.md](../../SECURITY.md) for the full comparison and honest limits.
+no `/run/host`, no `$HOME` mount, no exported binaries. The only shared paths are
+`~/spinofin/work` (mounted at `/work` for workspace files) and `~/.local/share/spinofin/wordlists`
+(mounted read-only at `/wordlists` so wordlists are accessible without duplicating them).
+Prefer it for anything that doesn't need root or raw sockets, and especially for running
+untrusted code. See [SECURITY.md](../../SECURITY.md) for the full comparison and honest limits.
 
 ## Fully declarative
 
@@ -60,8 +61,9 @@ Quadlet generator so a bad unit key fails too.
 
 ## Recipes & aliases
 
-`custom/ujust/kalicli-container.just`: `setup-kalicli`, `upgrade-kalicli`,
-`rebuild-kalicli`, `remove-kalicli`, and read-only `kalicli-status`.
+`custom/ujust/kalicli-container.just`: `setup-kalicli`, `enter-kalicli`,
+`toggle-kalicli-shell`, `upgrade-kalicli`, `rebuild-kalicli`, `remove-kalicli`,
+and read-only `kalicli-status`.
 Deliberately no per-tool setup recipes — everything is in the `Containerfile`.
 
 Shell helpers (baked in, no setup): `kalicli [cmd]` and `iskalicli` (exit codes:

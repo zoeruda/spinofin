@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # spinofin: shell aliases for the shared Kali toolbox container.
 # Baked into the image (see custom/aliases/README.md) -- no setup step needed.
 #

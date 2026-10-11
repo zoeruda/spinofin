@@ -7,7 +7,7 @@
 ## already documents the raw `cosign verify` command by hand, but a pentesting
 ## OS shouldn't make you copy-paste a verification command from a README).
 
-spinofin_image := "ghcr.io/zoeruda/spinofin"
+spinofin_image := env("SPINOFIN_IMAGE", "ghcr.io/zoeruda/spinofin")
 
 # Verify spinofin's cosign signature. No arg: verifies what's ACTUALLY BOOTED right now, by digest. "stable"/"testing": checks that tag's current registry content instead.
 [group('Security')]
@@ -37,10 +37,36 @@ verify-image tag="auto":
 
     do_verify() {
         # $1 = the exact cosign reference to check (a ":tag" or "@digest" pull spec)
+        local target="$1"
+        local gh_repo=""
+        local target_base="${target%@*}"
+        target_base="${target_base%:*}"
+
+        if [[ "${target_base}" =~ ^ghcr\.io/([^/]+/[^/]+)$ ]]; then
+            gh_repo="${BASH_REMATCH[1]}"
+        elif [ -f /usr/share/ublue-os/image-info.json ] && command -v jq >/dev/null 2>&1; then
+            local vendor name
+            vendor="$(jq -r '."image-vendor" // empty' /usr/share/ublue-os/image-info.json 2>/dev/null || true)"
+            name="$(jq -r '."image-name" // empty' /usr/share/ublue-os/image-info.json 2>/dev/null || true)"
+            if [ -n "${vendor}" ] && [ -n "${name}" ]; then
+                gh_repo="${vendor}/${name}"
+            fi
+        fi
+
+        local cert_regex="${COSIGN_CERT_IDENTITY_REGEXP:-}"
+        if [ -z "${cert_regex}" ]; then
+            if [ -n "${gh_repo}" ]; then
+                cert_regex="https://github.com/${gh_repo}/.github/workflows/"
+            else
+                cert_regex="https://github.com/zoeruda/spinofin/.github/workflows/"
+            fi
+        fi
+
+        echo "  Checking signature identity: ${cert_regex}"
         cosign verify \
-            --certificate-identity-regexp="https://github.com/zoeruda/spinofin/.github/workflows/" \
+            --certificate-identity-regexp="${cert_regex}" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-            "$1"
+            "${target}"
     }
 
     unsigned_notice() {

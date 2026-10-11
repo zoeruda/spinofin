@@ -12,6 +12,7 @@ arjun
 certipy-ad
 sslyze
 ldapdomaindump
+coercer
 
 # Not host-installable (need system build headers) -> Kali container instead:
 #   powerview.py -> ujust setup-powerview   (gssapi needs libkrb5-dev + python3-dev)

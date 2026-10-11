@@ -54,7 +54,10 @@
     },
     {
       "description": "Do not automatically cross Fedora major releases",
-      "matchDepNames": ["quay.io/fedora-ostree-desktops/silverblue"],
+      "matchDepNames": [
+        "ghcr.io/ublue-os/bluefin",
+        "quay.io/fedora-ostree-desktops/silverblue"
+      ],
       "matchUpdateTypes": ["major"],
       "enabled": false
     }
