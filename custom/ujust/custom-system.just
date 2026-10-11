@@ -66,8 +66,9 @@ toggle-shell shell="":
     # no chsh, editing /etc/passwd doesn't change how the terminal launches, and
     # pointing a login shell at a brew shell is a known way to lose brew's PATH.
     # The supported switch on Bluefin is per-terminal: we set the default Ptyxis
-    # profile's custom command. (The container recipe, toggle-kali-shell, DOES
-    # change the real login shell -- that's correct there, wrong here.)
+    # profile's custom command. (The container recipes, toggle-kali-shell and
+    # toggle-kalicli-shell, DO change the real login shell -- that's correct
+    # there, wrong here.)
     #
     # INPUT: an optional argument (`ujust toggle-shell zsh`) makes this
     # non-interactive for scripted provisioning; validated against the same
