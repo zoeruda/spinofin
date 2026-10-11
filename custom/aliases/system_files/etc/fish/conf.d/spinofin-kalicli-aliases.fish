@@ -29,7 +29,7 @@ function kalicli --description "Run command in rootless kalicli container"
     end
 
     if test (count $argv) -eq 0
-        podman exec $exec_flags spinofin-kalicli /bin/bash -l
+        podman exec $exec_flags spinofin-kalicli /bin/sh -c 's="$(getent passwd "$(id -un)" | cut -d: -f7 2>/dev/null || true)"; [ -n "$s" ] && [ -x "$s" ] || s=/bin/bash; exec "$s" -l'
     else
         podman exec $exec_flags spinofin-kalicli $argv
     end

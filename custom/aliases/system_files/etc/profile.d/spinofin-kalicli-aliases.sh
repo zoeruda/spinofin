@@ -51,7 +51,7 @@ kalicli() {
     fi
 
     if [ "$#" -eq 0 ]; then
-        podman exec "${_kc_flags[@]}" spinofin-kalicli /bin/bash -l
+        podman exec "${_kc_flags[@]}" spinofin-kalicli /bin/sh -c 's="$(getent passwd "$(id -un)" | cut -d: -f7 2>/dev/null || true)"; [ -n "$s" ] && [ -x "$s" ] || s=/bin/bash; exec "$s" -l'
     else
         podman exec "${_kc_flags[@]}" spinofin-kalicli "$@"
     fi

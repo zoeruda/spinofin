@@ -101,11 +101,12 @@ kalicli <cmd>                 # run in the rootless container (no args = shell)
 iskalicli                     # is kalicli set up? (guard: iskalicli && kalicli sqlmap ...)
 ```
 
-Optional — switch your shell between bash, zsh, and fish (host and/or the Kali container are independent):
+Optional — switch your shell between bash, zsh, and fish (host and/or the Kali containers are independent):
 
 ```bash
 ujust toggle-shell            # host: which shell new terminals launch
 ujust toggle-kali-shell       # Kali container: which shell enter-kali launches
+ujust toggle-kalicli-shell    # kalicli container: which shell enter-kalicli launches
 ```
 
 GUI apps (Flatseal, Burp Suite Community, KeePassXC, Remmina) install automatically on first boot via Flatpak — no command needed (Wireshark with live packet capture is provided via `spinofin-kali` and exported to the host desktop).
@@ -148,7 +149,7 @@ the full threat model and how to report a vulnerability.
 Because of the above, spinofin ships a second, safer container and steers you
 toward it:
 
-| | `spinofin-kali` (distrobox) | `kalicli` (bare podman) |
+| | `spinofin-kali` (distrobox) | `spinofin-kalicli` (bare podman) |
 |---|---|---|
 | Privilege | **Rootful** — container-root is host root | **Rootless** — container-root maps to your own UID |
 | Host filesystem | Entire `/` mounted at `/run/host` | Not mounted |
@@ -289,6 +290,7 @@ through Homebrew or Flatpak instead:
   - `ujust remove-kalicli` — stop and delete the container and its built image; leaves `~/spinofin/work` alone. The Quadlet unit ships with the image, so it stays (inert without the built image) and `setup-kalicli` brings it back.
   - `ujust kalicli-status` — read-only: whether the image is built, whether `spinofin-kalicli.service` is active, and where the shared dir is. Tools come from the image, so there's no per-package reconciliation to report.
   - `ujust enter-kalicli` — drop into an interactive shell in the container (starts it on demand). Nearly the same as running the `kalicli` alias with no arguments; kept for parity with `enter-kali` and for shells where the alias isn't sourced. No sudo-password prompt — kalicli is rootless, so you're already root inside with no host authority.
+  - `ujust toggle-kalicli-shell` *(container)* — counterpart to `toggle-kali-shell` for the rootless `kalicli` box: pick the shell it launches when you `ujust enter-kalicli` or run `kalicli` (bash / zsh / fish). Interactive by default; also **scriptable** — `ujust toggle-kalicli-shell zsh` skips the prompt (validated against the same bash/zsh/fish set). Installs the shell container-side via `apt` if missing and sets root's login shell via `usermod -s`. Container-local and not declared in the Containerfile, so `ujust rebuild-kalicli` recreates the container with its default shell (`bash`) — re-run `toggle-kalicli-shell` after a rebuild.
 - **Host-shell aliases for the container** (baked into the image, no setup step): `kali` and `kalisudo`, declared in [`custom/aliases/`](custom/aliases/README.md) and shipped the same way as `custom/branding/` — a plain `/etc/profile.d/*.sh` file overlay (not a package), live as soon as you boot the image.
   - `kali <cmd>` — run `<cmd>` in the `spinofin-kali` container as your user. No args drops you into an interactive shell (same as `ujust enter-kali`).
   - `kalisudo <cmd>` — same, but as root in the container; this is the shorthand for `distrobox enter --root spinofin-kali -- sudo <cmd>`.

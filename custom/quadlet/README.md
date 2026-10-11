@@ -61,8 +61,9 @@ Quadlet generator so a bad unit key fails too.
 
 ## Recipes & aliases
 
-`custom/ujust/kalicli-container.just`: `setup-kalicli`, `upgrade-kalicli`,
-`rebuild-kalicli`, `remove-kalicli`, and read-only `kalicli-status`.
+`custom/ujust/kalicli-container.just`: `setup-kalicli`, `enter-kalicli`,
+`toggle-kalicli-shell`, `upgrade-kalicli`, `rebuild-kalicli`, `remove-kalicli`,
+and read-only `kalicli-status`.
 Deliberately no per-tool setup recipes — everything is in the `Containerfile`.
 
 Shell helpers (baked in, no setup): `kalicli [cmd]` and `iskalicli` (exit codes:
