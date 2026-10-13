@@ -3,9 +3,11 @@
 Drop-in slots for spinofin's OS-identity branding (boot splash, login, panel
 logo, installer) — replacing the Bluefin/ublue logos the base image ships.
 
-This is **OS-identity** branding only, not a desktop reskin. Wallpapers
-(including the Bluefin dinosaurs), the GTK/icon theme, and accent colors stay
-Bluefin by project decision.
+This is **OS-identity** branding and customized background theming. The
+GTK/icon theme and accent colors stay Bluefin by project decision.
+Wallpapers feature 12 custom branded spinofin landscapes rotating monthly
+to match Bluefin's dinosaur cadence, alongside individual selection in GNOME Settings.
+
 
 ## No-layering posture
 
@@ -63,10 +65,10 @@ A plain `distro.d` dconf default only applies when the account has no
 explicit value of its own, which doesn't reliably cover spinofin's main
 delivery path (rebasing an existing Bluefin install, where Logo Menu already
 has an explicit enabled/default value). To handle that, `build/15-branding.sh`
-ships `etc/xdg/autostart/spinofin-branding-migrate-user-logo.desktop`, a
+ships `etc/xdg/autostart/spinofin-branding-migrate-user.desktop`, a
 standard XDG autostart entry (no custom systemd unit, no `systemctl enable`
 step) that `gnome-session` runs on first graphical login. It calls
-`usr/libexec/spinofin/branding-migrate-user-logo`, which writes spinofin's
+`usr/libexec/spinofin/branding-migrate-user`, which writes spinofin's
 icon into that account's own dconf db via `gsettings set` — exactly as if
 the user had picked it themselves — then stamps
 `~/.local/state/spinofin/branding-migrated` so it never runs again. From
@@ -106,6 +108,26 @@ Bluefin logo, which is why `LOGO=` alone does nothing here. We override both
 `spinofin-wordmark.svg`. We still set os-release `LOGO=spinofin-logo` (+ ship
 `apps/spinofin-logo.svg`) because it's the correct spec-defined field other
 tools read — just not what GNOME About uses.
+ 
+### 6. Seasonal Monthly Wallpapers & Schema Override
+
+- Asset directory: `system_files/usr/share/backgrounds/spinofin/` (12 4K JPEG images directly named `01-spinofin-<scene>.jpg` through `12-spinofin-<scene>.jpg`).
+- GNOME Settings definitions: `system_files/usr/share/gnome-background-properties/01-spinofin.xml` through `12-spinofin.xml`.
+- Format: 3840×2160 JPEG (True 4K UHD, 4:4:4 Chroma).
+- Seasonal grouping:
+  - **Winter**: `01` Jan (Glacial Fjord), `02` Feb (Neural Vector Pastel), `12` Dec (Twilight Marsh)
+  - **Spring**: `03` Mar (Silicon Swamp Dawn), `04` Apr (Coastal Arch), `05` May (Redwood Creek)
+  - **Summer**: `06` Jun (Canyon Falls), `07` Jul (Kelp Shallows), `08` Aug (Mangrove Canopy)
+  - **Autumn**: `09` Sep (Caldera Springs), `10` Oct (Estuary Sunset), `11` Nov (Silicon Swamp Sunset)
+- System default & Schema overrides:
+  - `system_files/etc/dconf/db/distro.d/99-spinofin-branding` (`dconf distro` default).
+  - `system_files/usr/share/glib-2.0/schemas/zz1-spinofin-modifications.gschema.override` (GLib schema override; ranks higher alphabetically than `zz0-bluefin-modifications.gschema.override` so `gsettings reset` falls back to spinofin).
+- Build-time automation: `build/15-branding.sh` stamps the current build month `$(date +%m)` into both `99-spinofin-branding` and `zz1-spinofin-modifications.gschema.override`, running both `glib-compile-schemas` and `dconf update`.
+- Individual selection: All 12 monthly scenes are registered individually in `usr/share/gnome-background-properties/`, allowing users to choose any specific month/scene in GNOME Settings → Appearance → Background.
+- Rebase migration: `system_files/usr/libexec/spinofin/branding-migrate-user` seeds the current month's wallpaper once on first graphical login for accounts rebasing from upstream Bluefin.
+
+
+
 
 ## Deferred — Anaconda installer (`deferred/anaconda/`)
 
@@ -156,6 +178,6 @@ shapes how this has to work:
 - **About name:** `grep -E '^PRETTY_NAME=' /etc/os-release` → `spinofin`. If still Bluefin, the os-release rewrite didn't run.
 - **About logo:** comes from the compiled-in pixmaps, not os-release `LOGO`. Confirm `fedora_logo_med.png`/`fedora_whitelogo_med.png` are the spinofin wordmarks.
 - **Panel logo:** check `cat /etc/dconf/db/distro.d/99-spinofin-branding` and which extension is live.
-- **Panel logo migration:** confirm `~/.local/state/spinofin/branding-migrated` exists after first login, and `dconf read /org/gnome/shell/extensions/Logo-menu/custom-icon-path` returns our SVG path from the *user* db. To re-test, delete the stamp file and log out/in (or run `/usr/libexec/spinofin/branding-migrate-user-logo` directly).
+- **Panel logo migration:** confirm `~/.local/state/spinofin/branding-migrated` exists after first login, and `dconf read /org/gnome/shell/extensions/Logo-menu/custom-icon-path` returns our SVG path from the *user* db. To re-test, delete the stamp file and log out/in (or run `/usr/libexec/spinofin/branding-migrate-user` directly).
 - **Plymouth:** if the boot splash still shows Bluefin, the initramfs wasn't regenerated — confirm `16-initramfs.sh` ran.
 - **fastfetch** renders monochrome (the `ublue-fastfetch` wrapper doesn't pass `--logo-color-N`).

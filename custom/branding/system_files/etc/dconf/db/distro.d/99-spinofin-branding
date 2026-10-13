@@ -10,7 +10,7 @@
 # makes their icon picker silently fail to persist a user's selection with no
 # error shown. This system default is only a fallback for accounts with no
 # explicit per-user value; see the autostart entry
-# (etc/xdg/autostart/spinofin-branding-migrate-user-logo.desktop) for how
+# (etc/xdg/autostart/spinofin-branding-migrate-user.desktop) for how
 # spinofin still applies its own mark on fresh installs and on rebase from an
 # existing Bluefin install without permanently overriding user choice. See
 # custom/branding/README.md ("User-Customizable Panel Logo").
@@ -21,3 +21,14 @@ menuicon-setting='spinofin-logo-symbolic'
 use-custom-icon=true
 custom-icon-path='/usr/share/icons/hicolor/scalable/actions/spinofin-logo-symbolic.svg'
 symbolic-icon=true
+
+# spinofin default wallpaper: monthly rotating background.
+# Matches Bluefin's monthly pattern; updated dynamically at build time to $(date +%m)-spinofin.jpg.
+# Unlocked so users can select any individual wallpaper or custom photo in Settings.
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/backgrounds/spinofin/10-spinofin-estuary-sunset.jpg'
+picture-uri-dark='file:///usr/share/backgrounds/spinofin/10-spinofin-estuary-sunset.jpg'
+picture-options='zoom'
+primary-color='#000000'
+secondary-color='#000000'
+
