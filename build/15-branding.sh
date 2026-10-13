@@ -5,12 +5,13 @@ set -euo pipefail
 ###############################################################################
 # Branding
 ###############################################################################
-# Applies spinofin's OS-identity branding: boot splash (Plymouth watermark),
-# GDM login logo, the panel logo icon, and the fastfetch terminal logo. Also
-# ships an XDG autostart entry (etc/xdg/autostart/) that seeds the panel logo
+# Applies spinofin's OS-identity branding: wallpapers, boot splash (Plymouth
+# watermark), GDM login logo, panel logo icon, and fastfetch terminal logo.
+# Also ships an XDG autostart entry (etc/xdg/autostart/) that seeds branding
 # into each account's own dconf db on first graphical login, so spinofin's
-# mark applies out of the box while still leaving the icon changeable (and
+# marks apply out of the box while still leaving them changeable (and
 # the change persistent) by the user afterward -- see
+
 # custom/branding/README.md, "User-Customizable Panel Logo". No new systemd
 # unit is authored for this -- the autostart entry is just another file in
 # system_files/, picked up by the merge-copy in step 2 below like everything
@@ -52,9 +53,31 @@ fi
 #    of system_files into / and overwrites the upstream assets in place.
 cp -a /ctx/custom/branding/system_files/. /
 
-# 3. Compile the dconf databases so the panel-logo override (distro db) and the
-#    GDM login logo (gdm db) are live in the built image. The base also runs
-#    dconf-update.service on boot as a fallback, so a failure here is non-fatal.
+# Set default wallpaper to match the current build month (Bluefin canonical pattern)
+current_month=$(date +%m)
+current_wp_file=""
+for wp in /usr/share/backgrounds/spinofin/"${current_month}"-spinofin-*.jpg; do
+    if [ -f "$wp" ]; then
+        current_wp_file="$wp"
+        break
+    fi
+done
+
+if [ -n "$current_wp_file" ]; then
+    if [ -f /etc/dconf/db/distro.d/99-spinofin-branding ]; then
+        sed -i -E "s|/usr/share/backgrounds/spinofin/[0-9]{2}-spinofin-[^']+\.jpg|${current_wp_file}|g" \
+            /etc/dconf/db/distro.d/99-spinofin-branding
+    fi
+    if [ -f /usr/share/glib-2.0/schemas/zz1-spinofin-modifications.gschema.override ]; then
+        sed -i -E "s|/usr/share/backgrounds/spinofin/[0-9]{2}-spinofin-[^']+\.jpg|${current_wp_file}|g" \
+            /usr/share/glib-2.0/schemas/zz1-spinofin-modifications.gschema.override
+    fi
+fi
+
+# 3. Compile GLib schemas and dconf databases so overrides take effect on build.
+if command -v glib-compile-schemas >/dev/null 2>&1; then
+    glib-compile-schemas /usr/share/glib-2.0/schemas
+fi
 dconf update || echo "WARN: dconf update failed at build; dconf-update.service will retry on boot"
 
 # 4. Refresh the hicolor icon cache so the custom symbolic panel icon resolves
