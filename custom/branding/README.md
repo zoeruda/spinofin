@@ -108,7 +108,7 @@ Bluefin logo, which is why `LOGO=` alone does nothing here. We override both
 `spinofin-wordmark.svg`. We still set os-release `LOGO=spinofin-logo` (+ ship
 `apps/spinofin-logo.svg`) because it's the correct spec-defined field other
 tools read — just not what GNOME About uses.
- 
+
 ### 6. Seasonal Monthly Wallpapers & Schema Override
 
 - Asset directory: `system_files/usr/share/backgrounds/spinofin/` (12 4K JPEG images directly named `01-spinofin-<scene>.jpg` through `12-spinofin-<scene>.jpg`).
