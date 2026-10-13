@@ -1,0 +1,53 @@
+#!/usr/bin/bash
+
+set -euo pipefail
+
+###############################################################################
+# spinofin: one-shot per-user branding migration
+###############################################################################
+# Seeds spinofin branding (panel logo and current month's wallpaper) into THIS
+# user's own dconf database once, then never touches it again. Run by
+# etc/xdg/autostart/spinofin-branding-migrate-user.desktop -- a plain
+# XDG autostart entry.
+###############################################################################
+
+STAMP_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/spinofin"
+STAMP_FILE="$STAMP_DIR/branding-migrated"
+
+mkdir -p "$STAMP_DIR"
+
+# 1. Panel logo migration
+if [ ! -e "$STAMP_FILE" ]; then
+    # Custom Command List (custom-command-list@storageb.github.com)
+    gsettings set org.gnome.shell.extensions.custom-command-list \
+        menuicon-setting 'spinofin-logo-symbolic' || \
+        echo "WARN: could not set custom-command-list menuicon-setting (schema missing?)" >&2
+
+    # Logo Menu (logomenu@aryan_k) -- the extension Bluefin enables by default.
+    gsettings set org.gnome.shell.extensions.Logo-menu use-custom-icon true || \
+        echo "WARN: could not set Logo-menu use-custom-icon (schema missing?)" >&2
+    gsettings set org.gnome.shell.extensions.Logo-menu custom-icon-path \
+        '/usr/share/icons/hicolor/scalable/actions/spinofin-logo-symbolic.svg' || \
+        echo "WARN: could not set Logo-menu custom-icon-path (schema missing?)" >&2
+    gsettings set org.gnome.shell.extensions.Logo-menu symbolic-icon true || \
+        echo "WARN: could not set Logo-menu symbolic-icon (schema missing?)" >&2
+
+    touch "$STAMP_FILE"
+fi
+
+# One-time migration: seed spinofin current month's wallpaper for rebased Bluefin installs
+WALLPAPER_STAMP="$STAMP_DIR/wallpaper-migrated"
+if [ ! -e "$WALLPAPER_STAMP" ]; then
+    current_bg=$(gsettings get org.gnome.desktop.background picture-uri 2>/dev/null || true)
+    if [[ "$current_bg" == *"bluefin"* ]] || [[ -z "$current_bg" ]]; then
+        current_month=$(date +%m)
+        for wp in /usr/share/backgrounds/spinofin/"${current_month}"-spinofin-*.jpg; do
+            if [ -f "$wp" ]; then
+                gsettings set org.gnome.desktop.background picture-uri "file://${wp}" || true
+                gsettings set org.gnome.desktop.background picture-uri-dark "file://${wp}" || true
+                break
+            fi
+        done
+    fi
+    touch "$WALLPAPER_STAMP"
+fi

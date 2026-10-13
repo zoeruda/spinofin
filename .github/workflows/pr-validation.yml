@@ -34,4 +34,4 @@ jobs:
           set -euo pipefail
           shellcheck \
             .github/actions/check-token-health/check_token_health.sh \
-            custom/branding/system_files/usr/libexec/spinofin/branding-migrate-user-logo
+            custom/branding/system_files/usr/libexec/spinofin/branding-migrate-user

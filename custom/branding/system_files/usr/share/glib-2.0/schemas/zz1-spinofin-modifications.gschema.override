@@ -1,0 +1,11 @@
+#-------------- SPINOFIN DESKTOP MODIFICATIONS --------------#
+# Evaluated after zz0-bluefin-modifications.gschema.override.
+# Default wallpaper points to the monthly seasonal spinofin wallpaper.
+# build/15-branding.sh stamps $(date +%m) into this file at build time.
+
+[org.gnome.desktop.background]
+picture-uri='file:///usr/share/backgrounds/spinofin/10-spinofin-estuary-sunset.jpg'
+picture-uri-dark='file:///usr/share/backgrounds/spinofin/10-spinofin-estuary-sunset.jpg'
+picture-options='zoom'
+primary-color='000000'
+secondary-color='000000'
