@@ -51,6 +51,3 @@ if [ ! -e "$WALLPAPER_STAMP" ]; then
     fi
     touch "$WALLPAPER_STAMP"
 fi
-
-
-
