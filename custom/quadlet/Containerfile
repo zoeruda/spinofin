@@ -33,7 +33,7 @@
 # tooling brew doesn't ship. impacket-scripts is also in the distrobox (which
 # exports it to the host); it's kept here too for in-sandbox AD work.
 
-FROM docker.io/kalilinux/kali-rolling:latest@sha256:02f5d6c019e549b0f55da58e835cad5355ef1030c6b2645265a324e37dfc4acc
+FROM docker.io/kalilinux/kali-rolling:latest@sha256:ea20024e16833dab1a5337f5998602f3b81f8a38f3b0995dda272c83a1b0c1b9
 
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
