@@ -79,8 +79,8 @@ sudoif command *args:
 #   $tag - The tag for the image (default: $DEFAULT_TAG).
 #
 # The script constructs the version string using the Fedora major version, tag,
-# and the current date. If the git working directory is clean, it also includes
-# the short SHA of the current HEAD.
+# and the last git commit date (falling back to current UTC date). If the git
+# working directory is clean, it also includes the short SHA of the current HEAD.
 #
 # just build $target_image $tag
 #
@@ -102,12 +102,16 @@ build $target_image=IMAGE_NAME $tag=DEFAULT_TAG:
         exit 1
     fi
 
-    # Bluefin-style version string: <fedora-version>.<date> for stable,
-    # <tag>-<fedora-version>.<date> for everything else.
+    # Bluefin-style version string: <fedora-version>.<commit-date> for stable,
+    # <tag>-<fedora-version>.<commit-date> for everything else. Using the last
+    # commit date (with safe.directory for sudo builds in CI) prevents scheduled
+    # no-op rebuilds from masquerading as newly updated base images; the collision
+    # check below appends .1, .2, etc. on subsequent rebuilds of the same commit.
+    commit_date=$(TZ=UTC0 git -c safe.directory="${PWD}" log -1 --format=%cd --date=format-local:%Y%m%d 2>/dev/null || date -u +%Y%m%d)
     if [[ "${tag}" =~ stable ]]; then
-        ver="${fedora_version}.$(date +%Y%m%d)"
+        ver="${fedora_version}.${commit_date}"
     else
-        ver="${tag}-${fedora_version}.$(date +%Y%m%d)"
+        ver="${tag}-${fedora_version}.${commit_date}"
     fi
 
     # Avoid tag collisions when rebuilding on the same day
